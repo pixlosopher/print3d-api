@@ -5,6 +5,8 @@ Provides endpoints for:
 - Job submission and status
 - Checkout and payment
 - Order tracking
+
+Version: 1.0.1 - Environment variables fix
 """
 
 from __future__ import annotations
