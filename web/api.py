@@ -324,6 +324,85 @@ def paypal_webhook():
     return jsonify({"status": "received"})
 
 
+# ============ Admin ============
+
+@app.route("/api/admin/process-order/<order_id>", methods=["POST"])
+def admin_process_order(order_id: str):
+    """Manually process an order (mark as paid and send to Shapeways)."""
+    # Simple auth check - require admin_key in header
+    admin_key = request.headers.get("X-Admin-Key")
+    if admin_key != "print3d-admin-2024":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # Get order
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    results = {"order_id": order_id, "steps": []}
+
+    # Mark as paid
+    try:
+        order_service.mark_paid(
+            order_id=order_id,
+            payment_id="manual_" + order_id,
+            payment_provider="manual",
+        )
+        results["steps"].append({"step": "mark_paid", "status": "success"})
+    except Exception as e:
+        results["steps"].append({"step": "mark_paid", "status": "error", "error": str(e)})
+
+    # Submit to Shapeways
+    try:
+        if shapeways_service.is_available:
+            job = job_service.get_job_status(order.job_id)
+            if job and job.get("mesh_path"):
+                mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
+                if mesh_path.exists():
+                    shapeways_result = shapeways_service.submit_order(
+                        mesh_path=mesh_path,
+                        material=order.material,
+                    )
+                    if shapeways_result.success:
+                        order_service.update_shapeways_id(
+                            order_id=order.id,
+                            shapeways_order_id=shapeways_result.shapeways_order_id,
+                        )
+                        results["steps"].append({
+                            "step": "shapeways",
+                            "status": "success",
+                            "shapeways_order_id": shapeways_result.shapeways_order_id
+                        })
+                    else:
+                        results["steps"].append({
+                            "step": "shapeways",
+                            "status": "error",
+                            "error": shapeways_result.error_message
+                        })
+                else:
+                    results["steps"].append({
+                        "step": "shapeways",
+                        "status": "error",
+                        "error": f"Mesh file not found: {mesh_path}"
+                    })
+            else:
+                results["steps"].append({
+                    "step": "shapeways",
+                    "status": "error",
+                    "error": "No mesh_path in job"
+                })
+        else:
+            results["steps"].append({
+                "step": "shapeways",
+                "status": "skipped",
+                "reason": "Shapeways not configured"
+            })
+    except Exception as e:
+        results["steps"].append({"step": "shapeways", "status": "error", "error": str(e)})
+
+    return jsonify(results)
+
+
 # ============ Orders ============
 
 @app.route("/api/order/<order_id>")
