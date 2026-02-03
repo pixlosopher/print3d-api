@@ -104,7 +104,16 @@ class PaymentService:
                 },
             ],
             shipping_address_collection={
-                "allowed_countries": ["US", "CA", "GB", "AU"],
+                "allowed_countries": [
+                    # North America
+                    "US", "CA", "MX",
+                    # Europe
+                    "GB", "DE", "FR", "ES", "IT", "NL", "BE", "AT", "CH", "SE", "DK", "NO", "FI", "IE", "PT", "PL",
+                    # Asia Pacific
+                    "AU", "NZ", "JP", "SG", "HK",
+                    # South America
+                    "BR", "AR", "CL", "CO",
+                ],
             },
             metadata={
                 "order_id": order_id,
