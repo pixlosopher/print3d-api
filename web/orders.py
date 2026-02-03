@@ -69,6 +69,8 @@ class Order:
     price_cents: int
     status: OrderStatus
     shipping_address: ShippingAddress
+    color: Optional[str] = None  # New: color selection
+    mesh_style: str = "detailed"  # New: mesh style (detailed/stylized)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     paid_at: Optional[datetime] = None
@@ -85,6 +87,8 @@ class Order:
             "customer_email": self.customer_email,
             "size": self.size,
             "material": self.material,
+            "color": self.color,
+            "mesh_style": self.mesh_style,
             "price_cents": self.price_cents,
             "price_display": f"${self.price_cents / 100:.2f}",
             "status": self.status.value,
@@ -127,6 +131,8 @@ class Order:
             customer_email=model.email,
             size=model.size,
             material=model.material,
+            color=getattr(model, 'color', None),
+            mesh_style=getattr(model, 'mesh_style', 'detailed'),
             price_cents=int(model.price_usd * 100),
             status=status,
             shipping_address=address,
@@ -153,6 +159,8 @@ class OrderService:
         material: str,
         price_cents: int,
         shipping_address: dict,
+        color: Optional[str] = None,
+        mesh_style: str = "detailed",
     ) -> Order:
         """Create a new order."""
         order_id = str(uuid.uuid4())[:8].upper()
@@ -165,6 +173,8 @@ class OrderService:
                 email=customer_email,
                 size=size,
                 material=material,
+                color=color,
+                mesh_style=mesh_style,
                 price_usd=price_cents / 100.0,
                 shipping={
                     "name": shipping_address.get("name", ""),

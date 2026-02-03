@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Text, Enum as SQLEnum
+from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Text, Enum as SQLEnum, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import enum
@@ -33,6 +33,7 @@ class JobStatusEnum(str, enum.Enum):
     """Job status enumeration."""
     PENDING = "pending"
     GENERATING_IMAGE = "generating_image"
+    CONCEPT_READY = "concept_ready"  # New: 2D image ready, waiting for payment
     CONVERTING_3D = "converting_3d"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -74,6 +75,9 @@ class JobModel(Base):
     # Agent info
     agent_name = Column(String(100), nullable=True)
 
+    # New: concept-only flag for cost-efficient flow
+    concept_only = Column(Boolean, default=False)
+
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
         return {
@@ -91,6 +95,7 @@ class JobModel(Base):
             "progress": self.progress,
             "error_message": self.error_message,
             "agent_name": self.agent_name,
+            "concept_only": self.concept_only,
         }
 
 
@@ -106,8 +111,10 @@ class OrderModel(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Product details
-    size = Column(String(20), nullable=False)  # small, medium, large
+    size = Column(String(20), nullable=False)  # mini, small, medium, large, xl
     material = Column(String(50), nullable=False)
+    color = Column(String(50), nullable=True)  # New: color selection
+    mesh_style = Column(String(20), default="detailed")  # New: detailed or stylized
     price_usd = Column(Float, nullable=False)
 
     # Shipping address
@@ -139,6 +146,8 @@ class OrderModel(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "size": self.size,
             "material": self.material,
+            "color": self.color,
+            "mesh_style": self.mesh_style,
             "price_usd": self.price_usd,
             "shipping": {
                 "name": self.shipping_name,
@@ -181,7 +190,15 @@ def get_db_session():
 
 
 # Job CRUD operations
-def create_job(db: Session, job_id: str, description: str, style: str, size_mm: float, agent_name: str = None) -> JobModel:
+def create_job(
+    db: Session,
+    job_id: str,
+    description: str,
+    style: str,
+    size_mm: float,
+    agent_name: str = None,
+    concept_only: bool = False,
+) -> JobModel:
     """Create a new job in the database."""
     job = JobModel(
         id=job_id,
@@ -190,6 +207,7 @@ def create_job(db: Session, job_id: str, description: str, style: str, size_mm: 
         size_mm=size_mm,
         agent_name=agent_name,
         status=JobStatusEnum.PENDING.value,
+        concept_only=concept_only,
     )
     db.add(job)
     db.commit()
@@ -221,7 +239,18 @@ def list_jobs(db: Session, limit: int = 20, offset: int = 0) -> list[JobModel]:
 
 
 # Order CRUD operations
-def create_order(db: Session, order_id: str, job_id: str, email: str, size: str, material: str, price_usd: float, shipping: dict = None) -> OrderModel:
+def create_order(
+    db: Session,
+    order_id: str,
+    job_id: str,
+    email: str,
+    size: str,
+    material: str,
+    price_usd: float,
+    shipping: dict = None,
+    color: str = None,
+    mesh_style: str = "detailed",
+) -> OrderModel:
     """Create a new order in the database."""
     order = OrderModel(
         id=order_id,
@@ -229,6 +258,8 @@ def create_order(db: Session, order_id: str, job_id: str, email: str, size: str,
         email=email,
         size=size,
         material=material,
+        color=color,
+        mesh_style=mesh_style,
         price_usd=price_usd,
         status=OrderStatusEnum.PENDING.value,
     )

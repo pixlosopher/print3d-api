@@ -82,7 +82,7 @@ class RealJobService:
         return self._mesh_gen
 
     def submit_job(self, agent_name: str, description: str, style: str, size_mm: float) -> str:
-        """Submit a new job for processing."""
+        """Submit a new job for full processing (image + 3D)."""
         # Generate unique job ID with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         import uuid
@@ -105,6 +105,126 @@ class RealJobService:
 
         return job_id
 
+    def submit_concept_job(self, agent_name: str, description: str, style: str) -> str:
+        """
+        Submit a job for 2D concept generation only.
+
+        This is the new cost-efficient flow:
+        - Only generates the 2D image
+        - 3D generation happens after payment via generate_mesh_for_job()
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        import uuid
+        job_id = f"concept_{timestamp}_{uuid.uuid4().hex[:6]}"
+
+        # Create job in database with concept_only flag
+        with get_db_session() as db:
+            create_job(
+                db=db,
+                job_id=job_id,
+                description=description,
+                style=style,
+                size_mm=0,  # Size determined at checkout
+                agent_name=agent_name,
+                concept_only=True,  # New flag
+            )
+
+        # Add to processing queue (will only generate 2D)
+        self.job_queue.put(job_id)
+        print(f"[{job_id}] Concept job submitted: {description}")
+
+        return job_id
+
+    def generate_mesh_for_job(
+        self,
+        job_id: str,
+        mesh_style: str = "detailed",
+        material_key: str = "plastic_white",
+    ) -> bool:
+        """
+        Generate 3D mesh for an existing concept job.
+
+        Called after payment is confirmed.
+        """
+        try:
+            with get_db_session() as db:
+                job = get_job(db, job_id)
+                if not job:
+                    print(f"[{job_id}] Job not found")
+                    return False
+
+                if not job.image_path:
+                    print(f"[{job_id}] No concept image found")
+                    return False
+
+                # Update status
+                update_job(db, job_id, status=JobStatusEnum.CONVERTING_3D.value, progress=50)
+
+            print(f"[{job_id}] Generating 3D mesh (style: {mesh_style}, material: {material_key})...")
+
+            # Build image path
+            image_path = self.output_dir / job.image_path.replace("/output/", "")
+
+            # Convert image to data URI for Meshy
+            with open(image_path, 'rb') as f:
+                image_bytes = f.read()
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+            image_url_for_meshy = f"data:image/png;base64,{image_b64}"
+
+            # Get mesh options based on style and material
+            from mesh_options import MeshGenerationOptions
+            mesh_options = MeshGenerationOptions.from_user_selection(mesh_style, material_key)
+
+            # Progress callback
+            def on_mesh_progress(progress: int):
+                with get_db_session() as db:
+                    update_job(db, job_id, progress=50 + int(progress * 0.5))
+
+            # Generate mesh with custom options
+            mesh_result = self.mesh_gen.from_image(
+                image_url=image_url_for_meshy,
+                output_dir=self.output_dir,
+                format="glb",
+                on_progress=on_mesh_progress,
+                # Pass mesh options to Meshy (requires mesh_gen update)
+                # model_type=mesh_options.model_type,
+                # target_polycount=mesh_options.target_polycount,
+            )
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            mesh_filename = f"{job_id}_{timestamp}.glb"
+
+            # Rename the downloaded file
+            if mesh_result.local_path:
+                new_mesh_path = self.output_dir / mesh_filename
+                mesh_result.local_path.rename(new_mesh_path)
+
+            # Update database with mesh path
+            mesh_url = mesh_result.glb_url or mesh_result.obj_url
+            with get_db_session() as db:
+                update_job(
+                    db, job_id,
+                    mesh_path=f"/output/{mesh_filename}",
+                    mesh_url=mesh_url,
+                    progress=100,
+                    status=JobStatusEnum.COMPLETED.value
+                )
+
+            print(f"[{job_id}] Mesh generated: /output/{mesh_filename}")
+            return True
+
+        except Exception as e:
+            with get_db_session() as db:
+                update_job(
+                    db, job_id,
+                    status=JobStatusEnum.FAILED.value,
+                    error_message=str(e)
+                )
+            print(f"[{job_id}] Mesh generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def get_job_status(self, job_id: str) -> Optional[dict]:
         """Get job status from database."""
         with get_db_session() as db:
@@ -122,19 +242,20 @@ class RealJobService:
     def process_job(self, job_id: str) -> bool:
         """Process a single job through the pipeline."""
         try:
-            # Step 1: Generate Image with Gemini
-            with get_db_session() as db:
-                update_job(db, job_id, status=JobStatusEnum.GENERATING_IMAGE.value, progress=20)
-
-            print(f"[{job_id}] Generating image...")
-
-            # Get job details
+            # Get job details first to check if concept_only
             with get_db_session() as db:
                 job = get_job(db, job_id)
                 if not job:
                     return False
                 description = job.description
                 style = job.style
+                concept_only = getattr(job, 'concept_only', False) or job_id.startswith('concept_')
+
+            # Step 1: Generate Image with Gemini
+            with get_db_session() as db:
+                update_job(db, job_id, status=JobStatusEnum.GENERATING_IMAGE.value, progress=20)
+
+            print(f"[{job_id}] Generating image... (concept_only={concept_only})")
 
             # Map style string to ImageStyle enum
             from image_gen import ImageStyle
@@ -164,10 +285,16 @@ class RealJobService:
                     db, job_id,
                     image_path=f"/output/{image_filename}",
                     image_url=f"/output/{image_filename}",
-                    progress=40
+                    progress=40 if not concept_only else 100,
+                    status=JobStatusEnum.GENERATING_IMAGE.value if not concept_only else "concept_ready",
                 )
 
             print(f"[{job_id}] Image generated: /output/{image_filename}")
+
+            # If concept_only, stop here (3D generation happens after payment)
+            if concept_only:
+                print(f"[{job_id}] Concept ready! Waiting for payment before 3D generation.")
+                return True
 
             # Step 2: Convert to 3D with Meshy
             with get_db_session() as db:

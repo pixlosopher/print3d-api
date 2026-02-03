@@ -34,6 +34,12 @@ from job_service import get_job_service
 from shapeways_orders import get_shapeways_service
 from emails import get_email_service
 
+# Import new pricing/options modules
+from sizes import get_sizes_dict, get_all_sizes, get_size
+from materials import get_materials_dict, get_all_materials, get_material, get_color_for_material
+from mesh_options import get_mesh_styles_dict, get_all_mesh_styles, MeshGenerationOptions
+from pricing import calculate_price, get_price_matrix, validate_order_config
+
 # Create Flask app
 app = Flask(__name__)
 
@@ -90,6 +96,160 @@ def get_public_config():
         "stripe_publishable_key": config.stripe_publishable_key if config.has_stripe else None,
         "paypal_client_id": config.paypal_client_id if config.has_paypal else None,
         "pricing": PRICING,
+    })
+
+
+# ============ Options & Pricing (NEW) ============
+
+@app.route("/api/options")
+def get_options():
+    """
+    Get all available customization options.
+
+    Returns sizes, materials, and mesh styles for the UI.
+    """
+    return jsonify({
+        "sizes": get_sizes_dict(),
+        "materials": get_materials_dict(),
+        "mesh_styles": get_mesh_styles_dict(),
+        "price_matrix": get_price_matrix(),
+    })
+
+
+@app.route("/api/price", methods=["POST"])
+def get_price():
+    """
+    Calculate price for a specific configuration.
+
+    Request body:
+        - material: Material key (e.g., "plastic_white")
+        - size: Size key (e.g., "medium")
+        - color: Optional color key
+
+    Returns price breakdown with total.
+    """
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    material_key = data.get("material")
+    size_key = data.get("size")
+    color_key = data.get("color")
+
+    if not material_key or not size_key:
+        return jsonify({
+            "error": "Missing required fields",
+            "required": ["material", "size"]
+        }), 400
+
+    # Validate configuration
+    is_valid, error_msg = validate_order_config(material_key, size_key, color_key)
+    if not is_valid:
+        return jsonify({"error": error_msg}), 400
+
+    try:
+        breakdown = calculate_price(material_key, size_key, color_key)
+        return jsonify(breakdown.to_dict())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/generate", methods=["POST"])
+def generate_concept():
+    """
+    Generate a 2D concept image only (no 3D yet).
+
+    This is the new cost-efficient flow:
+    1. Generate 2D image (cheap: ~$0.001)
+    2. User reviews and selects options
+    3. User pays
+    4. Only then generate 3D (expensive: ~$0.30)
+
+    Request body:
+        - prompt: Text description
+        - style: Optional style (default: "figurine")
+
+    Returns:
+        - job_id: For tracking
+        - image_url: Preview image
+        - status: "concept_ready"
+    """
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    prompt = data.get("prompt") or data.get("description")
+    if not prompt:
+        return jsonify({
+            "error": "Missing required field: prompt",
+            "required": ["prompt"]
+        }), 400
+
+    style = data.get("style", "figurine")
+
+    if not job_service:
+        return jsonify({"error": "Generation service not available"}), 503
+
+    try:
+        # Submit job for 2D generation only
+        job_id = job_service.submit_concept_job(
+            agent_name="web_client",
+            description=prompt,
+            style=style,
+        )
+
+        return jsonify({
+            "success": True,
+            "job_id": job_id,
+            "status": "generating_concept",
+            "message": "Generando concepto 2D...",
+            "status_url": f"/api/jobs/{job_id}",
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/validate-config", methods=["POST"])
+def validate_config():
+    """
+    Validate an order configuration before checkout.
+
+    Checks that material, size, and color combination is valid.
+    """
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    material_key = data.get("material")
+    size_key = data.get("size")
+    color_key = data.get("color")
+    mesh_style = data.get("mesh_style", "detailed")
+
+    is_valid, error_msg = validate_order_config(material_key, size_key, color_key)
+
+    if not is_valid:
+        return jsonify({
+            "valid": False,
+            "error": error_msg,
+        }), 400
+
+    # Also validate mesh style exists
+    if mesh_style not in ["detailed", "stylized"]:
+        return jsonify({
+            "valid": False,
+            "error": f"Invalid mesh_style: {mesh_style}. Use 'detailed' or 'stylized'.",
+        }), 400
+
+    # Get price for valid config
+    breakdown = calculate_price(material_key, size_key, color_key)
+
+    return jsonify({
+        "valid": True,
+        "price": breakdown.to_dict(),
     })
 
 
@@ -164,7 +324,19 @@ def list_jobs():
 
 @app.route("/api/checkout", methods=["POST"])
 def create_checkout():
-    """Create a checkout session for an order."""
+    """
+    Create a checkout session for an order.
+
+    Request body:
+        - job_id: Job ID from /api/generate
+        - email: Customer email
+        - size: Size key (mini, small, medium, large, xl)
+        - material: Material key (plastic_white, plastic_color, etc.)
+        - color: Optional color key (if material supports colors)
+        - mesh_style: Optional mesh style (detailed, stylized)
+        - shipping_address: Optional shipping address dict
+        - provider: Payment provider (stripe, paypal)
+    """
     data = request.get_json()
 
     if not data:
@@ -178,18 +350,31 @@ def create_checkout():
     email = data["email"]
     size = data["size"]
     material = data["material"]
+    color = data.get("color")
+    mesh_style = data.get("mesh_style", "detailed")
     shipping_address = data.get("shipping_address", {})
     provider = data.get("provider", "stripe")
 
-    # Get price
-    price_cents = payment_service.get_price(size, material)
+    # Validate configuration using new pricing system
+    is_valid, error_msg = validate_order_config(material, size, color)
+    if not is_valid:
+        return jsonify({"error": error_msg}), 400
 
-    # Create order
+    # Get price using new pricing system
+    try:
+        price_breakdown = calculate_price(material, size, color)
+        price_cents = price_breakdown.total_cents
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Create order with new fields
     order = order_service.create_order(
         job_id=job_id,
         customer_email=email,
         size=size,
         material=material,
+        color=color,
+        mesh_style=mesh_style,
         price_cents=price_cents,
         shipping_address=shipping_address,
     )
@@ -237,6 +422,36 @@ def create_checkout():
 
 # ============ Webhooks ============
 
+def submit_to_shapeways(order):
+    """Helper to submit an order to Shapeways."""
+    try:
+        if shapeways_service.is_available:
+            job = job_service.get_job_status(order.job_id)
+            if job and job.get("mesh_path"):
+                mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
+                if mesh_path.exists():
+                    shapeways_result = shapeways_service.submit_order(
+                        mesh_path=mesh_path,
+                        material=order.material,
+                    )
+                    if shapeways_result.success:
+                        order_service.update_shapeways_id(
+                            order_id=order.id,
+                            shapeways_order_id=shapeways_result.shapeways_order_id,
+                        )
+                        print(f"[Shapeways] Order created: {shapeways_result.shapeways_order_id}")
+                    else:
+                        print(f"[Shapeways] Failed: {shapeways_result.error_message}")
+                else:
+                    print(f"[Shapeways] Mesh not found: {mesh_path}")
+            else:
+                print(f"[Shapeways] No mesh_path in job {order.job_id}")
+        else:
+            print("[Shapeways] Service not available")
+    except Exception as e:
+        print(f"[Shapeways] Error: {e}")
+
+
 @app.route("/api/webhook/stripe", methods=["POST"])
 def stripe_webhook():
     """Handle Stripe webhook events."""
@@ -257,61 +472,75 @@ def stripe_webhook():
             return jsonify({"error": str(e)}), 400
 
     if event["type"] == "checkout.session.completed":
-        result = payment_service.handle_payment_success(event)
+        payment_result = payment_service.handle_payment_success(event)
 
         # Update order status
         order_service.mark_paid(
-            order_id=result.order_id,
-            payment_id=result.payment_id,
+            order_id=payment_result.order_id,
+            payment_id=payment_result.payment_id,
             payment_provider="stripe",
         )
 
-        # Get order details for email and Shapeways
-        order = order_service.get_order(result.order_id)
+        # Get order details for processing
+        order = order_service.get_order(payment_result.order_id)
         if order:
             # Send confirmation email
             try:
                 if email_service.is_available:
-                    result = email_service.send_order_confirmation(
+                    email_result = email_service.send_order_confirmation(
                         to_email=order.customer_email,
                         order_id=order.id,
                         order_details={
                             "size": order.size,
                             "material": order.material,
+                            "color": getattr(order, 'color', None),
+                            "mesh_style": getattr(order, 'mesh_style', 'detailed'),
                             "price": f"${order.price_cents / 100:.2f}",
                         }
                     )
-                    if result.success:
+                    if email_result.success:
                         print(f"[Webhook] Confirmation email sent to {order.customer_email}")
                     else:
-                        print(f"[Webhook] Email failed: {result.error}")
+                        print(f"[Webhook] Email failed: {email_result.error}")
             except Exception as e:
                 print(f"[Webhook] Failed to send email: {e}")
 
-            # Submit to Shapeways
-            try:
-                if shapeways_service.is_available:
-                    # Get mesh path from job
-                    job = job_service.get_job_status(order.job_id)
-                    if job and job.get("mesh_path"):
-                        mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
-                        if mesh_path.exists():
-                            shapeways_result = shapeways_service.submit_order(
-                                mesh_path=mesh_path,
-                                material=order.material,
-                            )
-                            if shapeways_result.success:
-                                order_service.update_shapeways_id(
-                                    order_id=order.id,
-                                    shapeways_order_id=shapeways_result.shapeways_order_id,
-                                )
-                                print(f"[Webhook] Shapeways order created: {shapeways_result.shapeways_order_id}")
-                            else:
-                                print(f"[Webhook] Shapeways failed: {shapeways_result.error_message}")
-            except Exception as e:
-                print(f"[Webhook] Shapeways error: {e}")
+            # Check if job is concept_only (needs 3D generation)
+            job = job_service.get_job_status(order.job_id)
+            if job:
+                is_concept_only = job.get("concept_only", False) or job.get("status") == "concept_ready"
 
-        return jsonify({"status": "success", "order_id": result.order_id})
+                if is_concept_only:
+                    # NEW FLOW: Generate 3D now that payment is confirmed
+                    print(f"[Webhook] Generating 3D for concept job {order.job_id}...")
+                    mesh_style = getattr(order, 'mesh_style', 'detailed')
+                    material_key = order.material
+
+                    # Generate mesh in background (don't block webhook)
+                    import threading
+                    def generate_and_submit():
+                        try:
+                            success = job_service.generate_mesh_for_job(
+                                job_id=order.job_id,
+                                mesh_style=mesh_style,
+                                material_key=material_key,
+                            )
+                            if success:
+                                print(f"[Webhook] 3D generated for {order.job_id}")
+                                # Now submit to Shapeways
+                                submit_to_shapeways(order)
+                            else:
+                                print(f"[Webhook] 3D generation failed for {order.job_id}")
+                        except Exception as e:
+                            print(f"[Webhook] Error generating 3D: {e}")
+
+                    thread = threading.Thread(target=generate_and_submit, daemon=True)
+                    thread.start()
+                else:
+                    # OLD FLOW: Mesh already exists, submit to Shapeways
+                    submit_to_shapeways(order)
+
+        return jsonify({"status": "success", "order_id": payment_result.order_id})
 
     return jsonify({"status": "ignored"})
 
