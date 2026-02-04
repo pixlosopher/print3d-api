@@ -156,6 +156,52 @@ def get_price():
         return jsonify({"error": str(e)}), 400
 
 
+# ============ Regional Pricing ============
+
+@app.route("/api/pricing/<country_code>")
+def get_regional_pricing(country_code: str):
+    """
+    Get prices for a specific country.
+
+    Prices vary by region (USA/Canada vs LATAM).
+    Also returns local currency equivalent for display.
+
+    Args:
+        country_code: ISO 3166-1 alpha-2 code (e.g., "MX", "US", "AR")
+
+    Returns:
+        Price table with all sizes for that country.
+    """
+    from regional_pricing import get_price_table
+
+    try:
+        price_table = get_price_table(country_code)
+        return jsonify(price_table)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/pricing/<country_code>/<size_key>")
+def get_regional_price_for_size(country_code: str, size_key: str):
+    """
+    Get price for a specific size and country.
+
+    Args:
+        country_code: ISO 3166-1 alpha-2 code (e.g., "MX", "US")
+        size_key: Size key (mini, small, medium, large)
+
+    Returns:
+        Price details for that specific configuration.
+    """
+    from regional_pricing import calculate_price as calc_regional_price
+
+    try:
+        price_result = calc_regional_price(size_key, country_code)
+        return jsonify(price_result.to_dict())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/api/generate", methods=["POST"])
 def generate_concept():
     """
@@ -356,15 +402,15 @@ def create_checkout():
     shipping_address = data.get("shipping_address", {})
     provider = data.get("provider", "stripe")
 
-    # Validate configuration using new pricing system
-    is_valid, error_msg = validate_order_config(material, size, color)
-    if not is_valid:
-        return jsonify({"error": error_msg}), 400
+    # Get country from shipping address for regional pricing
+    shipping_country = shipping_address.get("country", "US").upper()
 
-    # Get price using new pricing system
+    # Use regional pricing based on shipping country
     try:
-        price_breakdown = calculate_price(material, size, color)
-        price_cents = price_breakdown.total_cents
+        from regional_pricing import calculate_price as calc_regional_price
+        regional_price = calc_regional_price(size, shipping_country)
+        price_cents = regional_price.price_cents
+        print(f"[Checkout] Region: {regional_price.region_key}, Country: {shipping_country}, Size: {size}, Price: ${price_cents/100}")
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
