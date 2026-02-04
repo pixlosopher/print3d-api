@@ -101,7 +101,9 @@ class ShapewaysOrderService:
             )
 
         try:
+            print(f"[Shapeways] Uploading mesh: {mesh_path} ({mesh_path.stat().st_size / 1024:.1f} KB)")
             upload = await self.print_service.upload_async(mesh_path)
+            print(f"[Shapeways] Upload success: model_id={upload.model_id}, printable={upload.is_printable}")
 
             return ShapewaysOrderResult(
                 success=True,
@@ -111,11 +113,17 @@ class ShapewaysOrderService:
             )
 
         except ShapewaysError as e:
+            print(f"[Shapeways] Upload API Error: {e.message} (status: {e.status_code})")
+            if e.response:
+                print(f"[Shapeways] Response: {e.response}")
             return ShapewaysOrderResult(
                 success=False,
                 error_message=f"Shapeways upload failed: {e.message}"
             )
         except Exception as e:
+            import traceback
+            print(f"[Shapeways] Upload Exception: {str(e)}")
+            traceback.print_exc()
             return ShapewaysOrderResult(
                 success=False,
                 error_message=f"Upload error: {str(e)}"
@@ -186,10 +194,12 @@ class ShapewaysOrderService:
                     "phoneNumber": shipping_address.get("phone", ""),
                 }
 
+                print(f"[Shapeways] Creating order with address: {shapeways_address}")
                 order_result = await self.print_service.create_order_async(
                     items=[cart_item],
                     shipping_address=shapeways_address,
                 )
+                print(f"[Shapeways] Order result: {order_result}")
 
                 return ShapewaysOrderResult(
                     success=True,
@@ -206,11 +216,17 @@ class ShapewaysOrderService:
                 )
 
         except ShapewaysError as e:
+            print(f"[Shapeways] API Error: {e.message} (status: {e.status_code})")
+            if e.response:
+                print(f"[Shapeways] Response: {e.response}")
             return ShapewaysOrderResult(
                 success=False,
                 error_message=f"Shapeways order failed: {e.message}"
             )
         except Exception as e:
+            import traceback
+            print(f"[Shapeways] Exception: {str(e)}")
+            traceback.print_exc()
             return ShapewaysOrderResult(
                 success=False,
                 error_message=f"Order error: {str(e)}"
