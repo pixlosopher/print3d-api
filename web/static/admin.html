@@ -18,6 +18,109 @@
             min-height: 100vh;
         }
 
+        /* Login Screen */
+        .login-screen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+        }
+
+        .login-box {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-logo {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+
+        .login-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #10b981;
+        }
+
+        .login-subtitle {
+            color: #888;
+            margin-bottom: 32px;
+            font-size: 14px;
+        }
+
+        .login-input {
+            width: 100%;
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 14px 16px;
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 16px;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+
+        .login-input:focus {
+            outline: none;
+            border-color: #10b981;
+        }
+
+        .login-input::placeholder {
+            letter-spacing: normal;
+            color: #666;
+        }
+
+        .login-btn {
+            width: 100%;
+            background: #10b981;
+            color: #000;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .login-btn:hover {
+            background: #0d9668;
+        }
+
+        .login-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .login-error {
+            color: #ef4444;
+            margin-top: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .login-error.show {
+            display: block;
+        }
+
+        /* Dashboard (hidden until login) */
+        .dashboard {
+            display: none;
+        }
+
+        .dashboard.active {
+            display: block;
+        }
+
         .header {
             background: #111;
             border-bottom: 1px solid #222;
@@ -59,6 +162,20 @@
 
         .refresh-btn:hover {
             background: #0d9668;
+        }
+
+        .logout-btn {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .logout-btn:hover {
+            background: #444;
         }
 
         .container {
@@ -358,65 +475,96 @@
     </style>
 </head>
 <body>
-    <header class="header">
-        <div class="logo">✨ POSSIBLE Admin</div>
-        <div class="header-actions">
-            <div class="api-url" id="apiUrl">API: Loading...</div>
-            <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh</button>
-        </div>
-    </header>
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <div class="login-logo">✨</div>
+            <h1 class="login-title">POSSIBLE Admin</h1>
+            <p class="login-subtitle">Ingresa la contraseña para acceder</p>
 
-    <div class="container">
-        <!-- Stats -->
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card pending">
-                <div class="stat-value" id="statPending">-</div>
-                <div class="stat-label">Pendientes</div>
-            </div>
-            <div class="stat-card paid">
-                <div class="stat-value" id="statPaid">-</div>
-                <div class="stat-label">Pagadas</div>
-            </div>
-            <div class="stat-card processing">
-                <div class="stat-value" id="statProcessing">-</div>
-                <div class="stat-label">En Producción</div>
-            </div>
-            <div class="stat-card shipped">
-                <div class="stat-value" id="statShipped">-</div>
-                <div class="stat-label">Enviadas</div>
+            <form id="loginForm">
+                <input
+                    type="password"
+                    class="login-input"
+                    id="passwordInput"
+                    placeholder="Contraseña"
+                    autocomplete="off"
+                    autofocus
+                >
+                <button type="submit" class="login-btn" id="loginBtn">
+                    Acceder
+                </button>
+            </form>
+
+            <div class="login-error" id="loginError">
+                Contraseña incorrecta
             </div>
         </div>
+    </div>
 
-        <!-- Orders Table -->
-        <div class="section-title">
-            <span>Órdenes</span>
-            <div class="filter-tabs">
-                <button class="filter-tab active" data-status="">Todas</button>
-                <button class="filter-tab" data-status="paid">Por Producir</button>
-                <button class="filter-tab" data-status="processing">En Proceso</button>
-                <button class="filter-tab" data-status="shipped">Enviadas</button>
+    <!-- Dashboard (hidden until login) -->
+    <div class="dashboard" id="dashboard">
+        <header class="header">
+            <div class="logo">✨ POSSIBLE Admin</div>
+            <div class="header-actions">
+                <div class="api-url" id="apiUrl">API: Loading...</div>
+                <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh</button>
+                <button class="logout-btn" onclick="logout()">🚪 Salir</button>
             </div>
-        </div>
+        </header>
 
-        <table class="orders-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Cliente</th>
-                    <th>Producto</th>
-                    <th>Precio</th>
-                    <th>Status</th>
-                    <th>Proveedor</th>
-                    <th>Fecha</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody id="ordersTableBody">
-                <tr>
-                    <td colspan="8" class="loading">Cargando órdenes...</td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="container">
+            <!-- Stats -->
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card pending">
+                    <div class="stat-value" id="statPending">-</div>
+                    <div class="stat-label">Pendientes</div>
+                </div>
+                <div class="stat-card paid">
+                    <div class="stat-value" id="statPaid">-</div>
+                    <div class="stat-label">Pagadas</div>
+                </div>
+                <div class="stat-card processing">
+                    <div class="stat-value" id="statProcessing">-</div>
+                    <div class="stat-label">En Producción</div>
+                </div>
+                <div class="stat-card shipped">
+                    <div class="stat-value" id="statShipped">-</div>
+                    <div class="stat-label">Enviadas</div>
+                </div>
+            </div>
+
+            <!-- Orders Table -->
+            <div class="section-title">
+                <span>Órdenes</span>
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-status="">Todas</button>
+                    <button class="filter-tab" data-status="paid">Por Producir</button>
+                    <button class="filter-tab" data-status="processing">En Proceso</button>
+                    <button class="filter-tab" data-status="shipped">Enviadas</button>
+                </div>
+            </div>
+
+            <table class="orders-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Cliente</th>
+                        <th>Producto</th>
+                        <th>Precio</th>
+                        <th>Status</th>
+                        <th>Proveedor</th>
+                        <th>Fecha</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="ordersTableBody">
+                    <tr>
+                        <td colspan="8" class="loading">Cargando órdenes...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- Order Detail Modal -->
@@ -439,17 +587,80 @@
     <script>
         // Configuration
         const API_BASE = window.location.origin;
-        const ADMIN_KEY = 'print3d-admin-2024';
+        const SESSION_KEY = 'possible_admin_session';
 
+        let ADMIN_KEY = '';
         let currentFilter = '';
         let ordersData = [];
 
-        // Initialize
+        // Check for existing session on load
         document.addEventListener('DOMContentLoaded', () => {
+            const savedSession = sessionStorage.getItem(SESSION_KEY);
+            if (savedSession) {
+                ADMIN_KEY = savedSession;
+                showDashboard();
+            }
+        });
+
+        // Login form handler
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const password = document.getElementById('passwordInput').value;
+            const loginBtn = document.getElementById('loginBtn');
+            const loginError = document.getElementById('loginError');
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Verificando...';
+            loginError.classList.remove('show');
+
+            try {
+                // Test the password by making an API call
+                const response = await fetch(`${API_BASE}/api/admin/dashboard`, {
+                    headers: {
+                        'X-Admin-Key': password,
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (response.ok) {
+                    // Password correct - save to session and show dashboard
+                    ADMIN_KEY = password;
+                    sessionStorage.setItem(SESSION_KEY, password);
+                    showDashboard();
+                } else {
+                    // Wrong password
+                    loginError.classList.add('show');
+                    document.getElementById('passwordInput').value = '';
+                    document.getElementById('passwordInput').focus();
+                }
+            } catch (error) {
+                loginError.textContent = 'Error de conexión';
+                loginError.classList.add('show');
+            }
+
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Acceder';
+        });
+
+        // Show dashboard after successful login
+        function showDashboard() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('dashboard').classList.add('active');
             document.getElementById('apiUrl').textContent = `API: ${API_BASE}`;
             loadDashboard();
             setupFilterTabs();
-        });
+        }
+
+        // Logout
+        function logout() {
+            ADMIN_KEY = '';
+            sessionStorage.removeItem(SESSION_KEY);
+            document.getElementById('dashboard').classList.remove('active');
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('passwordInput').value = '';
+            document.getElementById('passwordInput').focus();
+        }
 
         // API helpers
         async function apiCall(endpoint, options = {}) {
@@ -461,6 +672,13 @@
                     ...options.headers,
                 },
             });
+
+            // If unauthorized, logout
+            if (response.status === 401) {
+                logout();
+                throw new Error('Sesión expirada');
+            }
+
             return response.json();
         }
 
