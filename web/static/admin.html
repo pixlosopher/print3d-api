@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSSIBLE Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #111;
+            border-bottom: 1px solid #222;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #10b981;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .api-url {
+            background: #1a1a1a;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .refresh-btn {
+            background: #10b981;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .refresh-btn:hover {
+            background: #0d9668;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #10b981;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .stat-card.pending .stat-value { color: #f59e0b; }
+        .stat-card.paid .stat-value { color: #3b82f6; }
+        .stat-card.processing .stat-value { color: #8b5cf6; }
+        .stat-card.shipped .stat-value { color: #10b981; }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-tab {
+            background: #1a1a1a;
+            border: none;
+            color: #888;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .filter-tab.active {
+            background: #10b981;
+            color: #000;
+        }
+
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .orders-table th {
+            text-align: left;
+            padding: 16px;
+            background: #222;
+            font-weight: 600;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .orders-table td {
+            padding: 16px;
+            border-bottom: 1px solid #222;
+            font-size: 14px;
+        }
+
+        .orders-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .orders-table tr:hover {
+            background: #222;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-pending { background: #f59e0b20; color: #f59e0b; }
+        .status-paid { background: #3b82f620; color: #3b82f6; }
+        .status-processing { background: #8b5cf620; color: #8b5cf6; }
+        .status-shipped { background: #10b98120; color: #10b981; }
+        .status-delivered { background: #10b98140; color: #10b981; }
+
+        .action-btn {
+            background: #333;
+            border: none;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 4px;
+        }
+
+        .action-btn:hover {
+            background: #444;
+        }
+
+        .action-btn.primary {
+            background: #10b981;
+            color: #000;
+        }
+
+        .action-btn.primary:hover {
+            background: #0d9668;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #10b981;
+        }
+
+        .form-select {
+            width: 100%;
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .order-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .detail-item {
+            background: #222;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .concept-preview {
+            max-width: 200px;
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #10b981;
+            color: #000;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            z-index: 2000;
+            display: none;
+        }
+
+        .toast.error {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        .toast.show {
+            display: block;
+        }
+
+        .shipping-info {
+            background: #222;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+
+        .shipping-info h4 {
+            color: #10b981;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">✨ POSSIBLE Admin</div>
+        <div class="header-actions">
+            <div class="api-url" id="apiUrl">API: Loading...</div>
+            <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card pending">
+                <div class="stat-value" id="statPending">-</div>
+                <div class="stat-label">Pendientes</div>
+            </div>
+            <div class="stat-card paid">
+                <div class="stat-value" id="statPaid">-</div>
+                <div class="stat-label">Pagadas</div>
+            </div>
+            <div class="stat-card processing">
+                <div class="stat-value" id="statProcessing">-</div>
+                <div class="stat-label">En Producción</div>
+            </div>
+            <div class="stat-card shipped">
+                <div class="stat-value" id="statShipped">-</div>
+                <div class="stat-label">Enviadas</div>
+            </div>
+        </div>
+
+        <!-- Orders Table -->
+        <div class="section-title">
+            <span>Órdenes</span>
+            <div class="filter-tabs">
+                <button class="filter-tab active" data-status="">Todas</button>
+                <button class="filter-tab" data-status="paid">Por Producir</button>
+                <button class="filter-tab" data-status="processing">En Proceso</button>
+                <button class="filter-tab" data-status="shipped">Enviadas</button>
+            </div>
+        </div>
+
+        <table class="orders-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Cliente</th>
+                    <th>Producto</th>
+                    <th>Precio</th>
+                    <th>Status</th>
+                    <th>Proveedor</th>
+                    <th>Fecha</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+                <tr>
+                    <td colspan="8" class="loading">Cargando órdenes...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Order Detail Modal -->
+    <div class="modal-overlay" id="orderModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Orden #<span id="modalOrderId"></span></h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+
+            <div id="modalContent">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Configuration
+        const API_BASE = window.location.origin;
+        const ADMIN_KEY = 'print3d-admin-2024';
+
+        let currentFilter = '';
+        let ordersData = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('apiUrl').textContent = `API: ${API_BASE}`;
+            loadDashboard();
+            setupFilterTabs();
+        });
+
+        // API helpers
+        async function apiCall(endpoint, options = {}) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers: {
+                    'X-Admin-Key': ADMIN_KEY,
+                    'Content-Type': 'application/json',
+                    ...options.headers,
+                },
+            });
+            return response.json();
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const data = await apiCall('/api/admin/dashboard');
+
+                // Update stats
+                const counts = data.status_counts || {};
+                document.getElementById('statPending').textContent = counts.pending || 0;
+                document.getElementById('statPaid').textContent = counts.paid || 0;
+                document.getElementById('statProcessing').textContent = counts.processing || 0;
+                document.getElementById('statShipped').textContent = counts.shipped || 0;
+
+                // Load orders
+                await loadOrders();
+            } catch (error) {
+                showToast('Error cargando dashboard: ' + error.message, true);
+            }
+        }
+
+        // Load orders
+        async function loadOrders() {
+            const statusParam = currentFilter ? `?status=${currentFilter}` : '';
+            const data = await apiCall(`/api/admin/orders${statusParam}`);
+            ordersData = data.orders || [];
+            renderOrders();
+        }
+
+        // Render orders table
+        function renderOrders() {
+            const tbody = document.getElementById('ordersTableBody');
+
+            if (ordersData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No hay órdenes</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = ordersData.map(order => `
+                <tr>
+                    <td><strong>${order.id}</strong></td>
+                    <td>
+                        <div>${order.email}</div>
+                        <div style="color: #888; font-size: 12px;">${order.shipping?.name || '-'}</div>
+                    </td>
+                    <td>
+                        <div>${order.size} / ${order.material}</div>
+                        <div style="color: #888; font-size: 12px;">${order.job?.description?.substring(0, 30) || '-'}...</div>
+                    </td>
+                    <td>$${order.price_usd?.toFixed(2) || '0.00'}</td>
+                    <td><span class="status-badge status-${order.status}">${order.status}</span></td>
+                    <td>
+                        <div>${order.external_provider || '-'}</div>
+                        ${order.external_order_id ? `<div style="color: #888; font-size: 11px;">${order.external_order_id}</div>` : ''}
+                    </td>
+                    <td>
+                        <div>${new Date(order.created_at).toLocaleDateString()}</div>
+                        <div style="color: #888; font-size: 12px;">${new Date(order.created_at).toLocaleTimeString()}</div>
+                    </td>
+                    <td>
+                        <button class="action-btn" onclick="viewOrder('${order.id}')">👁️ Ver</button>
+                        ${order.job?.mesh_path ? `<button class="action-btn primary" onclick="downloadMesh('${order.id}')">⬇️ GLB</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Setup filter tabs
+        function setupFilterTabs() {
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentFilter = tab.dataset.status;
+                    loadOrders();
+                });
+            });
+        }
+
+        // View order details
+        async function viewOrder(orderId) {
+            try {
+                const order = await apiCall(`/api/admin/orders/${orderId}`);
+                document.getElementById('modalOrderId').textContent = orderId;
+
+                const shipping = order.shipping || {};
+                const job = order.job || {};
+
+                document.getElementById('modalContent').innerHTML = `
+                    <div class="order-detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Cliente</div>
+                            <div class="detail-value">${order.email}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Status</div>
+                            <div class="detail-value"><span class="status-badge status-${order.status}">${order.status}</span></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Producto</div>
+                            <div class="detail-value">${order.size} / ${order.material}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Precio Cliente</div>
+                            <div class="detail-value">$${order.price_usd?.toFixed(2) || '0.00'}</div>
+                        </div>
+                    </div>
+
+                    ${job.image_url ? `<img src="${job.image_url}" class="concept-preview" alt="Concept">` : ''}
+
+                    <div class="shipping-info">
+                        <h4>📦 Dirección de Envío</h4>
+                        <p>${shipping.name || '-'}</p>
+                        <p>${shipping.address || '-'}</p>
+                        <p>${shipping.city || ''} ${shipping.state || ''} ${shipping.zip || ''}</p>
+                        <p>${shipping.country || '-'}</p>
+                    </div>
+
+                    <h3 style="margin: 24px 0 16px;">Actualizar Proveedor Externo</h3>
+                    <div class="form-group">
+                        <label class="form-label">Proveedor</label>
+                        <select class="form-select" id="externalProvider">
+                            <option value="">-- Seleccionar --</option>
+                            <option value="craftcloud" ${order.external_provider === 'craftcloud' ? 'selected' : ''}>Craftcloud</option>
+                            <option value="trideo" ${order.external_provider === 'trideo' ? 'selected' : ''}>TRIDEO</option>
+                            <option value="sculpteo" ${order.external_provider === 'sculpteo' ? 'selected' : ''}>Sculpteo</option>
+                            <option value="shapeways" ${order.external_provider === 'shapeways' ? 'selected' : ''}>Shapeways</option>
+                            <option value="other" ${order.external_provider === 'other' ? 'selected' : ''}>Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">ID de Orden Externa</label>
+                        <input type="text" class="form-input" id="externalOrderId" value="${order.external_order_id || ''}" placeholder="Ej: CC-12345">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Costo de Producción (USD)</label>
+                        <input type="number" step="0.01" class="form-input" id="productionCost" value="${order.production_cost_usd || ''}" placeholder="Ej: 20.30">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Costo de Envío (USD)</label>
+                        <input type="number" step="0.01" class="form-input" id="shippingCost" value="${order.shipping_cost_usd || ''}" placeholder="Ej: 14.90">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notas Admin</label>
+                        <input type="text" class="form-input" id="adminNotes" value="${order.admin_notes || ''}" placeholder="Notas internas...">
+                    </div>
+                    <button class="action-btn primary" style="width: 100%; padding: 12px;" onclick="saveExternalOrder('${orderId}')">
+                        💾 Guardar Info Proveedor
+                    </button>
+
+                    <h3 style="margin: 24px 0 16px;">Actualizar Tracking</h3>
+                    <div class="form-group">
+                        <label class="form-label">Número de Tracking</label>
+                        <input type="text" class="form-input" id="trackingNumber" value="${order.tracking_number || ''}" placeholder="Ej: 1Z999AA10123456784">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">URL de Tracking (opcional)</label>
+                        <input type="text" class="form-input" id="trackingUrl" value="${order.tracking_url || ''}" placeholder="https://...">
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="notifyCustomer" checked>
+                            <span class="form-label" style="margin: 0;">Notificar al cliente por email</span>
+                        </label>
+                    </div>
+                    <button class="action-btn primary" style="width: 100%; padding: 12px; background: #3b82f6;" onclick="saveTracking('${orderId}')">
+                        📦 Marcar como Enviado
+                    </button>
+                `;
+
+                document.getElementById('orderModal').classList.add('active');
+            } catch (error) {
+                showToast('Error cargando orden: ' + error.message, true);
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('orderModal').classList.remove('active');
+        }
+
+        // Download mesh file
+        function downloadMesh(orderId) {
+            window.open(`${API_BASE}/api/admin/download/${orderId}/mesh`, '_blank');
+        }
+
+        // Save external order info
+        async function saveExternalOrder(orderId) {
+            try {
+                const data = {
+                    external_provider: document.getElementById('externalProvider').value,
+                    external_order_id: document.getElementById('externalOrderId').value,
+                    production_cost_usd: parseFloat(document.getElementById('productionCost').value) || null,
+                    shipping_cost_usd: parseFloat(document.getElementById('shippingCost').value) || null,
+                    admin_notes: document.getElementById('adminNotes').value,
+                };
+
+                await apiCall(`/api/admin/orders/${orderId}/external`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(data),
+                });
+
+                showToast('✅ Info de proveedor guardada');
+                loadOrders();
+            } catch (error) {
+                showToast('Error: ' + error.message, true);
+            }
+        }
+
+        // Save tracking and mark as shipped
+        async function saveTracking(orderId) {
+            try {
+                const trackingNumber = document.getElementById('trackingNumber').value;
+                if (!trackingNumber) {
+                    showToast('Ingresa un número de tracking', true);
+                    return;
+                }
+
+                const data = {
+                    tracking_number: trackingNumber,
+                    tracking_url: document.getElementById('trackingUrl').value,
+                    notify_customer: document.getElementById('notifyCustomer').checked,
+                };
+
+                const result = await apiCall(`/api/admin/orders/${orderId}/tracking`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(data),
+                });
+
+                if (result.email_sent) {
+                    showToast('✅ Orden marcada como enviada y cliente notificado');
+                } else {
+                    showToast('✅ Orden marcada como enviada (email no enviado)');
+                }
+
+                closeModal();
+                loadOrders();
+            } catch (error) {
+                showToast('Error: ' + error.message, true);
+            }
+        }
+
+        // Toast notification
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => {
+                toast.className = 'toast';
+            }, 3000);
+        }
+
+        // Close modal on outside click
+        document.getElementById('orderModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('orderModal')) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

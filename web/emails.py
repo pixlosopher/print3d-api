@@ -144,12 +144,25 @@ class EmailService:
 
     def send_shipping_notification(
         self,
-        to: str,
+        to_email: str,
         order_id: str,
         tracking_number: str,
+        tracking_url: str = "",
         carrier: str = "USPS",
     ) -> EmailResult:
-        """Send shipping notification email."""
+        """Send shipping notification email.
+
+        Args:
+            to_email: Customer email
+            order_id: Order ID
+            tracking_number: Carrier tracking number
+            tracking_url: Optional direct tracking URL
+            carrier: Carrier name for display
+        """
+        # If tracking_url provided, use it; otherwise default to order page
+        track_button_url = tracking_url if tracking_url else f"{self.config.frontend_url}/order/{order_id}"
+        track_button_text = "Track Package" if tracking_url else "View Order"
+
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -162,6 +175,7 @@ class EmailService:
                 h1 {{ color: #ffffff; font-size: 28px; margin-bottom: 16px; }}
                 .tracking-box {{ background: #10b981; color: #000; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center; }}
                 .tracking-number {{ font-size: 28px; font-weight: bold; font-family: monospace; }}
+                .order-info {{ background: #2a2a2a; border-radius: 12px; padding: 16px; margin: 16px 0; }}
                 .button {{ display: inline-block; background: #10b981; color: #000; padding: 16px 32px; border-radius: 9999px; text-decoration: none; font-weight: 600; margin-top: 24px; }}
                 .footer {{ text-align: center; margin-top: 32px; color: #666; font-size: 14px; }}
             </style>
@@ -169,31 +183,35 @@ class EmailService:
         <body>
             <div class="container">
                 <div class="header">
-                    <div class="logo">🖨️ Print3D</div>
+                    <div class="logo">✨ POSSIBLE</div>
                 </div>
-                <h1>Your Order Has Shipped! 📦</h1>
-                <p style="color: #888;">Great news! Your custom 3D print is on its way.</p>
+                <h1>¡Tu Orden Ha Sido Enviada! 📦</h1>
+                <p style="color: #888;">¡Excelentes noticias! Tu impresión 3D personalizada está en camino.</p>
 
                 <div class="tracking-box">
-                    <div style="margin-bottom: 8px;">Tracking Number ({carrier})</div>
+                    <div style="margin-bottom: 8px;">Número de Rastreo</div>
                     <div class="tracking-number">{tracking_number}</div>
                 </div>
 
-                <p style="color: #888;">Expected delivery: 3-5 business days</p>
+                <div class="order-info">
+                    <p style="margin: 0; color: #888;"><strong style="color: #fff;">Orden:</strong> #{order_id}</p>
+                    <p style="margin: 8px 0 0 0; color: #888;"><strong style="color: #fff;">Entrega estimada:</strong> 5-10 días hábiles</p>
+                </div>
 
                 <div style="text-align: center;">
-                    <a href="{self.config.frontend_url}/order/{order_id}" class="button">Track Package</a>
+                    <a href="{track_button_url}" class="button">{track_button_text}</a>
                 </div>
 
                 <div class="footer">
-                    <p>© 2026 Print3D. All rights reserved.</p>
+                    <p>¿Preguntas? Responde a este email.</p>
+                    <p>© 2026 POSSIBLE. Todos los derechos reservados.</p>
                 </div>
             </div>
         </body>
         </html>
         """
 
-        return self._send(to, f"Your Order Has Shipped! - #{order_id}", html)
+        return self._send(to_email, f"¡Tu Orden Ha Sido Enviada! - #{order_id}", html)
 
 
 # Singleton

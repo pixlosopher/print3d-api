@@ -20,9 +20,10 @@ web_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, web_dir)
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from pathlib import Path
+from datetime import datetime
 
 # Import config
 from config import get_config
@@ -795,6 +796,326 @@ def admin_regenerate_3d(order_id: str):
     return jsonify(results)
 
 
+# ============ Admin Dashboard (Semi-Manual Workflow) ============
+
+ADMIN_KEY = "print3d-admin-2024"
+
+
+def verify_admin(request):
+    """Verify admin authentication."""
+    admin_key = request.headers.get("X-Admin-Key")
+    return admin_key == ADMIN_KEY
+
+
+@app.route("/api/admin/dashboard")
+def admin_dashboard():
+    """
+    Get admin dashboard summary.
+
+    Returns order counts by status and recent orders.
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from web.database import get_db_session, count_orders_by_status, list_orders_for_admin
+
+    with get_db_session() as db:
+        # Get counts by status
+        status_counts = count_orders_by_status(db)
+
+        # Get recent orders that need attention (paid but not shipped)
+        pending_production = list_orders_for_admin(db, status="paid", limit=20)
+        processing = list_orders_for_admin(db, status="processing", limit=20)
+
+    return jsonify({
+        "status_counts": status_counts,
+        "pending_production": [o.to_dict() for o in pending_production],
+        "processing": [o.to_dict() for o in processing],
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+
+
+@app.route("/api/admin/orders")
+def admin_list_orders():
+    """
+    List orders for admin dashboard.
+
+    Query params:
+        - status: Filter by status (paid, processing, shipped, etc.)
+        - limit: Max results (default 50)
+        - offset: Pagination offset (default 0)
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from web.database import get_db_session, list_orders_for_admin
+
+    status = request.args.get("status")
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+
+    with get_db_session() as db:
+        orders = list_orders_for_admin(db, status=status, limit=limit, offset=offset)
+
+        # Enrich with job info for each order
+        enriched_orders = []
+        for order in orders:
+            order_dict = order.to_dict()
+
+            # Get job info to include image/mesh paths
+            job = job_service.get_job_status(order.job_id)
+            if job:
+                order_dict["job"] = {
+                    "description": job.get("description"),
+                    "image_url": job.get("image_url"),
+                    "mesh_path": job.get("mesh_path"),
+                    "status": job.get("status"),
+                }
+
+            enriched_orders.append(order_dict)
+
+    return jsonify({
+        "orders": enriched_orders,
+        "total": len(enriched_orders),
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+@app.route("/api/admin/orders/<order_id>")
+def admin_get_order(order_id: str):
+    """
+    Get full order details for admin.
+
+    Includes job info and file paths.
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    order_dict = order.to_dict()
+
+    # Get full job info
+    job = job_service.get_job_status(order.job_id)
+    if job:
+        order_dict["job"] = job
+
+        # Add download URLs
+        if job.get("mesh_path"):
+            mesh_filename = Path(job["mesh_path"]).name
+            order_dict["download_urls"] = {
+                "mesh": f"/api/admin/download/{order_id}/mesh",
+                "mesh_filename": mesh_filename,
+            }
+        if job.get("image_url"):
+            order_dict["download_urls"] = order_dict.get("download_urls", {})
+            order_dict["download_urls"]["image"] = job["image_url"]
+
+    return jsonify(order_dict)
+
+
+@app.route("/api/admin/download/<order_id>/mesh")
+def admin_download_mesh(order_id: str):
+    """
+    Download mesh file (.glb) for an order.
+
+    Used by admin to manually upload to Craftcloud/TRIDEO.
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    job = job_service.get_job_status(order.job_id)
+    if not job or not job.get("mesh_path"):
+        return jsonify({"error": "No mesh file available for this order"}), 404
+
+    mesh_path = resolve_mesh_path(job["mesh_path"])
+
+    if not mesh_path.exists():
+        return jsonify({"error": f"Mesh file not found: {mesh_path}"}), 404
+
+    # Send file with descriptive name
+    download_name = f"order_{order_id}_{mesh_path.name}"
+    return send_file(
+        mesh_path,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="model/gltf-binary",
+    )
+
+
+@app.route("/api/admin/orders/<order_id>/external", methods=["PATCH"])
+def admin_update_external_order(order_id: str):
+    """
+    Update order with external provider info.
+
+    Request body:
+        - external_provider: Provider name (craftcloud, trideo, sculpteo, shapeways)
+        - external_order_id: Order ID in external system
+        - production_cost_usd: Actual production cost
+        - shipping_cost_usd: Actual shipping cost
+        - admin_notes: Internal notes
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    from web.database import get_db_session, update_order
+
+    with get_db_session() as db:
+        update_fields = {}
+
+        if "external_provider" in data:
+            update_fields["external_provider"] = data["external_provider"]
+        if "external_order_id" in data:
+            update_fields["external_order_id"] = data["external_order_id"]
+        if "production_cost_usd" in data:
+            update_fields["production_cost_usd"] = float(data["production_cost_usd"])
+        if "shipping_cost_usd" in data:
+            update_fields["shipping_cost_usd"] = float(data["shipping_cost_usd"])
+        if "admin_notes" in data:
+            update_fields["admin_notes"] = data["admin_notes"]
+
+        # If external order is set, update status to processing
+        if "external_order_id" in data and data["external_order_id"]:
+            update_fields["status"] = "processing"
+
+        updated = update_order(db, order_id, **update_fields)
+
+        if not updated:
+            return jsonify({"error": "Failed to update order"}), 500
+
+        return jsonify({
+            "success": True,
+            "order": updated.to_dict(),
+        })
+
+
+@app.route("/api/admin/orders/<order_id>/tracking", methods=["PATCH"])
+def admin_update_tracking(order_id: str):
+    """
+    Update order with tracking info and notify customer.
+
+    Request body:
+        - tracking_number: Tracking number from carrier
+        - tracking_url: Optional tracking URL
+        - notify_customer: Whether to send email notification (default: true)
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    tracking_number = data.get("tracking_number")
+    if not tracking_number:
+        return jsonify({"error": "tracking_number is required"}), 400
+
+    tracking_url = data.get("tracking_url", "")
+    notify_customer = data.get("notify_customer", True)
+
+    from web.database import get_db_session, update_order
+
+    with get_db_session() as db:
+        updated = update_order(
+            db, order_id,
+            tracking_number=tracking_number,
+            tracking_url=tracking_url,
+            status="shipped",
+        )
+
+        if not updated:
+            return jsonify({"error": "Failed to update order"}), 500
+
+    result = {
+        "success": True,
+        "order_id": order_id,
+        "tracking_number": tracking_number,
+        "status": "shipped",
+    }
+
+    # Send notification email
+    if notify_customer and email_service.is_available:
+        try:
+            email_result = email_service.send_shipping_notification(
+                to_email=order.customer_email,
+                order_id=order_id,
+                tracking_number=tracking_number,
+                tracking_url=tracking_url,
+            )
+            result["email_sent"] = email_result.success
+            if not email_result.success:
+                result["email_error"] = email_result.error
+        except Exception as e:
+            result["email_sent"] = False
+            result["email_error"] = str(e)
+    else:
+        result["email_sent"] = False
+        result["email_error"] = "Email service not available" if notify_customer else "Notification disabled"
+
+    return jsonify(result)
+
+
+@app.route("/api/admin/orders/<order_id>/status", methods=["PATCH"])
+def admin_update_status(order_id: str):
+    """
+    Update order status.
+
+    Request body:
+        - status: New status (paid, processing, shipped, delivered, cancelled)
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    data = request.get_json()
+    if not data or "status" not in data:
+        return jsonify({"error": "status is required"}), 400
+
+    valid_statuses = ["pending", "paid", "processing", "shipped", "delivered", "cancelled", "refunded"]
+    new_status = data["status"]
+
+    if new_status not in valid_statuses:
+        return jsonify({
+            "error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        }), 400
+
+    from web.database import get_db_session, update_order
+
+    with get_db_session() as db:
+        updated = update_order(db, order_id, status=new_status)
+
+        if not updated:
+            return jsonify({"error": "Failed to update order"}), 500
+
+        return jsonify({
+            "success": True,
+            "order_id": order_id,
+            "status": new_status,
+        })
+
+
 # ============ Orders ============
 
 @app.route("/api/order/<order_id>")
@@ -825,6 +1146,13 @@ def list_orders():
 
 
 # ============ Static Files ============
+
+@app.route("/admin")
+def serve_admin_dashboard():
+    """Serve admin dashboard HTML."""
+    static_dir = Path(__file__).parent / "static"
+    return send_from_directory(static_dir, "admin.html")
+
 
 @app.route("/output/<path:filename>")
 def serve_output(filename: str):

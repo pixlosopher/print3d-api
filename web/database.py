@@ -136,6 +136,13 @@ class OrderModel(Base):
     tracking_number = Column(String(100), nullable=True)
     tracking_url = Column(String(500), nullable=True)
 
+    # External provider tracking (for semi-manual workflow)
+    external_provider = Column(String(50), nullable=True)  # craftcloud, trideo, sculpteo, etc.
+    external_order_id = Column(String(100), nullable=True)  # Order ID in external system
+    production_cost_usd = Column(Float, nullable=True)  # Actual cost paid to provider
+    shipping_cost_usd = Column(Float, nullable=True)  # Actual shipping cost
+    admin_notes = Column(Text, nullable=True)  # Internal notes for admin
+
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
         return {
@@ -162,6 +169,12 @@ class OrderModel(Base):
             "shapeways_order_id": self.shapeways_order_id,
             "tracking_number": self.tracking_number,
             "tracking_url": self.tracking_url,
+            # External provider fields
+            "external_provider": self.external_provider,
+            "external_order_id": self.external_order_id,
+            "production_cost_usd": self.production_cost_usd,
+            "shipping_cost_usd": self.shipping_cost_usd,
+            "admin_notes": self.admin_notes,
         }
 
 
@@ -303,6 +316,29 @@ def update_order(db: Session, order_id: str, **kwargs) -> Optional[OrderModel]:
 def list_orders_by_email(db: Session, email: str, limit: int = 20) -> list[OrderModel]:
     """List orders by email."""
     return db.query(OrderModel).filter(OrderModel.email == email).order_by(OrderModel.created_at.desc()).limit(limit).all()
+
+
+def list_orders_for_admin(
+    db: Session,
+    status: str = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[OrderModel]:
+    """List orders for admin dashboard with optional status filter."""
+    query = db.query(OrderModel)
+    if status:
+        query = query.filter(OrderModel.status == status)
+    return query.order_by(OrderModel.created_at.desc()).offset(offset).limit(limit).all()
+
+
+def count_orders_by_status(db: Session) -> dict:
+    """Count orders by status for admin dashboard."""
+    from sqlalchemy import func
+    results = db.query(
+        OrderModel.status,
+        func.count(OrderModel.id)
+    ).group_by(OrderModel.status).all()
+    return {status: count for status, count in results}
 
 
 # Initialize on import
