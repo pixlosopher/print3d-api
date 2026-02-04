@@ -45,10 +45,18 @@ class Config(BaseSettings):
     default_size_mm: float = Field(default=50.0, description="Default model height in mm")
     mesh_timeout_seconds: int = Field(default=600, description="Timeout for 3D generation (10 min)")
 
-    # Payment (Stripe)
-    stripe_secret_key: str = Field(default="", description="Stripe secret API key")
+    # Payment (Stripe) - Live keys
+    stripe_secret_key: str = Field(default="", description="Stripe secret API key (live)")
     stripe_webhook_secret: str = Field(default="", description="Stripe webhook signing secret")
-    stripe_publishable_key: str = Field(default="", description="Stripe publishable key for frontend")
+    stripe_publishable_key: str = Field(default="", description="Stripe publishable key for frontend (live)")
+
+    # Payment (Stripe) - Test keys (optional, for testing without changing live keys)
+    stripe_test_secret_key: str = Field(default="", description="Stripe TEST secret API key")
+    stripe_test_publishable_key: str = Field(default="", description="Stripe TEST publishable key")
+    stripe_test_webhook_secret: str = Field(default="", description="Stripe TEST webhook signing secret")
+
+    # Stripe mode selector
+    stripe_mode: Literal["live", "test"] = Field(default="live", description="Which Stripe keys to use: 'live' or 'test'")
 
     # Payment (PayPal)
     paypal_client_id: str = Field(default="", description="PayPal client ID")
@@ -93,7 +101,33 @@ class Config(BaseSettings):
     @property
     def has_stripe(self) -> bool:
         """Check if Stripe is configured."""
-        return bool(self.stripe_secret_key)
+        return bool(self.active_stripe_secret_key)
+
+    @property
+    def active_stripe_secret_key(self) -> str:
+        """Get the active Stripe secret key based on mode."""
+        if self.stripe_mode == "test" and self.stripe_test_secret_key:
+            return self.stripe_test_secret_key
+        return self.stripe_secret_key
+
+    @property
+    def active_stripe_publishable_key(self) -> str:
+        """Get the active Stripe publishable key based on mode."""
+        if self.stripe_mode == "test" and self.stripe_test_publishable_key:
+            return self.stripe_test_publishable_key
+        return self.stripe_publishable_key
+
+    @property
+    def active_stripe_webhook_secret(self) -> str:
+        """Get the active Stripe webhook secret based on mode."""
+        if self.stripe_mode == "test" and self.stripe_test_webhook_secret:
+            return self.stripe_test_webhook_secret
+        return self.stripe_webhook_secret
+
+    @property
+    def is_stripe_test_mode(self) -> bool:
+        """Check if Stripe is in test mode."""
+        return self.stripe_mode == "test"
 
     @property
     def has_paypal(self) -> bool:

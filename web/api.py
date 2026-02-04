@@ -83,6 +83,7 @@ def health():
             "meshy": config.has_meshy,
             "shapeways": config.has_shapeways,
             "stripe": config.has_stripe,
+            "stripe_mode": config.stripe_mode,  # "live" or "test"
             "paypal": config.has_paypal,
             "email": config.has_email,
             "image_gen": config.has_image_gen,
@@ -94,7 +95,8 @@ def health():
 def get_public_config():
     """Get public configuration for frontend."""
     return jsonify({
-        "stripe_publishable_key": config.stripe_publishable_key if config.has_stripe else None,
+        "stripe_publishable_key": config.active_stripe_publishable_key if config.has_stripe else None,
+        "stripe_mode": config.stripe_mode,  # "live" or "test"
         "paypal_client_id": config.paypal_client_id if config.has_paypal else None,
         "pricing": PRICING,
     })

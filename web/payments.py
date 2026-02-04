@@ -62,9 +62,11 @@ class PaymentService:
     def __init__(self, config: Config | None = None):
         self.config = config or get_config()
 
-        # Initialize Stripe
+        # Initialize Stripe with active key (respects STRIPE_MODE)
         if self.config.has_stripe:
-            stripe.api_key = self.config.stripe_secret_key
+            stripe.api_key = self.config.active_stripe_secret_key
+            if self.config.is_stripe_test_mode:
+                print("[STRIPE] Running in TEST mode")
 
     def get_price(self, size: str, material: str) -> int:
         """Get price in cents for a size/material combination."""
@@ -162,13 +164,14 @@ class PaymentService:
 
     def verify_stripe_webhook(self, payload: bytes, signature: str) -> dict:
         """Verify and parse Stripe webhook."""
-        if not self.config.stripe_webhook_secret:
+        webhook_secret = self.config.active_stripe_webhook_secret
+        if not webhook_secret:
             raise ValueError("Stripe webhook secret not configured")
 
         event = stripe.Webhook.construct_event(
             payload,
             signature,
-            self.config.stripe_webhook_secret,
+            webhook_secret,
         )
         return event
 
