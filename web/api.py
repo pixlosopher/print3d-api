@@ -530,22 +530,34 @@ def stripe_webhook():
                     material_key = order.material
 
                     # Generate mesh in background (don't block webhook)
+                    # Capture order_id to reload fresh order in thread
+                    order_id_for_thread = order.id
+                    job_id_for_thread = order.job_id
+
                     import threading
                     def generate_and_submit():
                         try:
+                            print(f"[Webhook Thread] Starting 3D generation for {job_id_for_thread}...")
                             success = job_service.generate_mesh_for_job(
-                                job_id=order.job_id,
+                                job_id=job_id_for_thread,
                                 mesh_style=mesh_style,
                                 material_key=material_key,
                             )
                             if success:
-                                print(f"[Webhook] 3D generated for {order.job_id}")
-                                # Now submit to Shapeways
-                                submit_to_shapeways(order)
+                                print(f"[Webhook Thread] 3D generated for {job_id_for_thread}")
+                                # Reload order from DB to get fresh session
+                                fresh_order = order_service.get_order(order_id_for_thread)
+                                if fresh_order:
+                                    print(f"[Webhook Thread] Submitting to Shapeways...")
+                                    submit_to_shapeways(fresh_order)
+                                else:
+                                    print(f"[Webhook Thread] ERROR: Could not reload order {order_id_for_thread}")
                             else:
-                                print(f"[Webhook] 3D generation failed for {order.job_id}")
+                                print(f"[Webhook Thread] 3D generation failed for {job_id_for_thread}")
                         except Exception as e:
-                            print(f"[Webhook] Error generating 3D: {e}")
+                            import traceback
+                            print(f"[Webhook Thread] Error: {e}")
+                            traceback.print_exc()
 
                     thread = threading.Thread(target=generate_and_submit, daemon=True)
                     thread.start()
@@ -601,9 +613,19 @@ def admin_process_order(order_id: str):
             if job and job.get("mesh_path"):
                 mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
                 if mesh_path.exists():
+                    # Build shipping address for Shapeways
+                    shipping_address = None
+                    if hasattr(order, 'shipping_address') and order.shipping_address:
+                        addr = order.shipping_address
+                        if hasattr(addr, 'to_dict'):
+                            shipping_address = addr.to_dict()
+                        elif isinstance(addr, dict):
+                            shipping_address = addr
+
                     shapeways_result = shapeways_service.submit_order(
                         mesh_path=mesh_path,
                         material=order.material,
+                        shipping_address=shipping_address,
                     )
                     if shapeways_result.success:
                         order_service.update_shapeways_id(
