@@ -765,14 +765,25 @@
                 const order = await apiCall(`/api/admin/orders/${orderId}`);
                 document.getElementById('modalOrderId').textContent = orderId;
 
-                const shipping = order.shipping || {};
+                // Handle both API formats (shipping vs shipping_address, email vs customer_email)
+                const shipping = order.shipping || order.shipping_address || {};
                 const job = order.job || {};
+                const email = order.email || order.customer_email || 'N/A';
+                const priceUsd = order.price_usd || (order.price_cents ? order.price_cents / 100 : 0);
+
+                // Normalize shipping address fields
+                const shippingName = shipping.name || '';
+                const shippingAddress = shipping.address || shipping.address_line1 || '';
+                const shippingCity = shipping.city || '';
+                const shippingState = shipping.state || '';
+                const shippingZip = shipping.zip || shipping.postal_code || '';
+                const shippingCountry = shipping.country || '';
 
                 document.getElementById('modalContent').innerHTML = `
                     <div class="order-detail-grid">
                         <div class="detail-item">
                             <div class="detail-label">Cliente</div>
-                            <div class="detail-value">${order.email}</div>
+                            <div class="detail-value">${email}</div>
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">Status</div>
@@ -784,7 +795,7 @@
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">Precio Cliente</div>
-                            <div class="detail-value">$${order.price_usd?.toFixed(2) || '0.00'}</div>
+                            <div class="detail-value">$${priceUsd.toFixed(2)}</div>
                         </div>
                     </div>
 
@@ -792,10 +803,10 @@
 
                     <div class="shipping-info">
                         <h4>📦 Dirección de Envío</h4>
-                        <p>${shipping.name || '-'}</p>
-                        <p>${shipping.address || '-'}</p>
-                        <p>${shipping.city || ''} ${shipping.state || ''} ${shipping.zip || ''}</p>
-                        <p>${shipping.country || '-'}</p>
+                        <p><strong>${shippingName || '-'}</strong></p>
+                        <p>${shippingAddress || '-'}</p>
+                        <p>${shippingCity} ${shippingState} ${shippingZip}</p>
+                        <p>${shippingCountry || '-'}</p>
                     </div>
 
                     <h3 style="margin: 24px 0 16px;">Actualizar Proveedor Externo</h3>
