@@ -218,18 +218,39 @@ class ShapewaysOrderService:
 
         return order_result
 
-    # Sync wrappers
+    # Sync wrappers - handle event loop properly for thread contexts
+    def _run_async(self, coro):
+        """Run an async coroutine, handling event loop conflicts."""
+        try:
+            # Try to get existing loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, create new loop in thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, coro)
+                    return future.result()
+            elif loop.is_closed():
+                # Loop is closed, create a new one
+                return asyncio.run(coro)
+            else:
+                # Loop exists but not running
+                return loop.run_until_complete(coro)
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(coro)
+
     def upload_model(self, mesh_path: Path | str) -> ShapewaysOrderResult:
         """Sync wrapper for upload_model_async."""
-        return asyncio.run(self.upload_model_async(mesh_path))
+        return self._run_async(self.upload_model_async(mesh_path))
 
     def create_order(self, model_id: str, material: str, quantity: int = 1) -> ShapewaysOrderResult:
         """Sync wrapper for create_order_async."""
-        return asyncio.run(self.create_order_async(model_id, material, quantity))
+        return self._run_async(self.create_order_async(model_id, material, quantity))
 
     def submit_order(self, mesh_path: Path | str, material: str, quantity: int = 1) -> ShapewaysOrderResult:
         """Sync wrapper for submit_order_async."""
-        return asyncio.run(self.submit_order_async(mesh_path, material, quantity))
+        return self._run_async(self.submit_order_async(mesh_path, material, quantity))
 
 
 # Singleton
