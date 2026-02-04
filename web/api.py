@@ -802,8 +802,12 @@ ADMIN_KEY = "print3d-admin-2024"
 
 
 def verify_admin(request):
-    """Verify admin authentication."""
-    admin_key = request.headers.get("X-Admin-Key")
+    """Verify admin authentication.
+
+    Checks both header (X-Admin-Key) and query parameter (key) for flexibility.
+    Query parameter is useful for file downloads where headers can't be set.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("key")
     return admin_key == ADMIN_KEY
 
 

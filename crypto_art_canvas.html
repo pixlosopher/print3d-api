@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Vending Machine - Warhol Style</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 300px);
+            grid-template-rows: repeat(3, 300px);
+            gap: 5px;
+            border: 5px solid white;
+        }
+        
+        .panel {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #333;
+        }
+        
+        .vending-machine {
+            width: 180px;
+            height: 240px;
+            border-radius: 15px;
+            position: relative;
+            border: 3px solid #000;
+            background: linear-gradient(135deg, #333 0%, #666 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+        }
+        
+        .display {
+            width: 120px;
+            height: 40px;
+            background: #001100;
+            color: #00ff00;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            font-weight: bold;
+            border: 2px solid #000;
+            border-radius: 5px;
+        }
+        
+        .dispenser {
+            width: 140px;
+            height: 100px;
+            background: #222;
+            border: 2px solid #000;
+            border-radius: 5px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 2px;
+            padding: 5px;
+        }
+        
+        .item {
+            background: radial-gradient(circle, #ffd700 20%, #ff8c00 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            color: #000;
+        }
+        
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 3px;
+            width: 140px;
+        }
+        
+        .button {
+            width: 25px;
+            height: 20px;
+            background: #ff0000;
+            border: 2px solid #000;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 6px;
+            font-weight: bold;
+        }
+        
+        .coin-slot {
+            width: 80px;
+            height: 15px;
+            background: #000;
+            border-radius: 8px;
+            border: 2px solid #333;
+        }
+        
+        /* Panel specific colors */
+        .panel:nth-child(1) { background: #ff1493; } /* Hot Pink */
+        .panel:nth-child(2) { background: #00bfff; } /* Electric Blue */
+        .panel:nth-child(3) { background: #32cd32; } /* Lime Green */
+        .panel:nth-child(4) { background: #ff4500; } /* Bright Orange */
+        .panel:nth-child(5) { background: #8a2be2; } /* Purple */
+        .panel:nth-child(6) { background: #ffff00; } /* Yellow */
+        .panel:nth-child(7) { background: #ff0000; } /* Red */
+        .panel:nth-child(8) { background: #00ffff; } /* Cyan */
+        .panel:nth-child(9) { background: #ff00ff; } /* Magenta */
+        
+        .title {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="title">CRYPTO VENDING - WARHOL STYLE</div>
+    
+    <div class="grid-container">
+        <!-- Panel 1 - Hot Pink -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">₿ INSERT WALLET</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 2 - Electric Blue -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">💎 RARE PEPE $5K</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 3 - Lime Green -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">🚀 MOON NFT $10K</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 4 - Bright Orange -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">💰 HODL COIN $1K</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 5 - Purple -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">⚡ LIGHTNING $500</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 6 - Yellow -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">🔥 FIRE SALE 50%</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 7 - Red -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">🎭 BORED APE $25K</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 8 - Cyan -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">📱 MOBILE MINT</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+        
+        <!-- Panel 9 - Magenta -->
+        <div class="panel">
+            <div class="vending-machine">
+                <div class="display">💍 LUXURY NFT</div>
+                <div class="dispenser">
+                    <div class="item">Ξ</div>
+                    <div class="item">₿</div>
+                    <div class="item">💎</div>
+                    <div class="item">🐸</div>
+                    <div class="item">📱</div>
+                    <div class="item">🚀</div>
+                    <div class="item">💰</div>
+                    <div class="item">🔥</div>
+                    <div class="item">⚡</div>
+                    <div class="item">🎭</div>
+                    <div class="item">🎨</div>
+                    <div class="item">💍</div>
+                </div>
+                <div class="buttons">
+                    <div class="button">A1</div>
+                    <div class="button">A2</div>
+                    <div class="button">A3</div>
+                    <div class="button">A4</div>
+                    <div class="button">B1</div>
+                    <div class="button">B2</div>
+                    <div class="button">B3</div>
+                    <div class="button">B4</div>
+                </div>
+                <div class="coin-slot"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

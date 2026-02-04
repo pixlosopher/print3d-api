@@ -645,7 +645,8 @@
 
         // Download mesh file
         function downloadMesh(orderId) {
-            window.open(`${API_BASE}/api/admin/download/${orderId}/mesh`, '_blank');
+            // Pass admin key as query parameter for file downloads
+            window.open(`${API_BASE}/api/admin/download/${orderId}/mesh?key=${ADMIN_KEY}`, '_blank');
         }
 
         // Save external order info
