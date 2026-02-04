@@ -423,13 +423,46 @@ def create_checkout():
 
 # ============ Webhooks ============
 
+def resolve_mesh_path(mesh_path_str: str) -> Path:
+    """Resolve mesh path from job to actual file path."""
+    # mesh_path could be:
+    # - "/output/xxx.glb" (API format)
+    # - "output/xxx.glb" (relative)
+    # - Full absolute path
+
+    # First try as-is if it starts with /app (Render deployment)
+    if mesh_path_str.startswith("/app/"):
+        return Path(mesh_path_str)
+
+    # Extract just the filename part
+    if mesh_path_str.startswith("/output/"):
+        filename = mesh_path_str.replace("/output/", "")
+    elif mesh_path_str.startswith("output/"):
+        filename = mesh_path_str.replace("output/", "")
+    else:
+        filename = Path(mesh_path_str).name
+
+    # Try config.output_dir first
+    local_path = Path(config.output_dir) / filename
+    if local_path.exists():
+        return local_path
+
+    # Try /app/output (Render production)
+    render_path = Path("/app/output") / filename
+    if render_path.exists():
+        return render_path
+
+    # Fall back to config.output_dir (even if doesn't exist, for error message)
+    return local_path
+
+
 def submit_to_shapeways(order):
     """Helper to submit an order to Shapeways."""
     try:
         if shapeways_service.is_available:
             job = job_service.get_job_status(order.job_id)
             if job and job.get("mesh_path"):
-                mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
+                mesh_path = resolve_mesh_path(job["mesh_path"])
                 if mesh_path.exists():
                     # Build shipping address dict for Shapeways
                     shipping_address = None
@@ -611,7 +644,7 @@ def admin_process_order(order_id: str):
         if shapeways_service.is_available:
             job = job_service.get_job_status(order.job_id)
             if job and job.get("mesh_path"):
-                mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
+                mesh_path = resolve_mesh_path(job["mesh_path"])
                 if mesh_path.exists():
                     # Build shipping address for Shapeways
                     shipping_address = None
