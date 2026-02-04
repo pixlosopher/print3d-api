@@ -278,24 +278,21 @@ class ShapewaysOrderService:
     # Sync wrappers - handle event loop properly for thread contexts
     def _run_async(self, coro):
         """Run an async coroutine, handling event loop conflicts."""
+        # Always create a fresh event loop for this thread
+        # This avoids issues with closed loops or running loops in Flask threads
         try:
-            # Try to get existing loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're in an async context, create new loop in thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, coro)
-                    return future.result()
-            elif loop.is_closed():
-                # Loop is closed, create a new one
-                return asyncio.run(coro)
-            else:
-                # Loop exists but not running
-                return loop.run_until_complete(coro)
-        except RuntimeError:
-            # No event loop, create one
-            return asyncio.run(coro)
+            # Create new event loop for this thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        except Exception as e:
+            print(f"[Shapeways] _run_async error: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def upload_model(self, mesh_path: Path | str) -> ShapewaysOrderResult:
         """Sync wrapper for upload_model_async."""
