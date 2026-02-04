@@ -388,6 +388,7 @@ def create_checkout():
                 material=material,
                 customer_email=email,
                 shipping_address=shipping_address,
+                price_cents=price_cents,
             )
             return jsonify({
                 "success": True,

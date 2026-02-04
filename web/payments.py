@@ -78,12 +78,15 @@ class PaymentService:
         material: str,
         customer_email: str,
         shipping_address: dict,
+        price_cents: int | None = None,
     ) -> CheckoutSession:
         """Create a Stripe Checkout session."""
         if not self.config.has_stripe:
             raise ValueError("Stripe not configured")
 
-        price_cents = self.get_price(size, material)
+        # Use provided price_cents, or fall back to legacy pricing
+        if price_cents is None:
+            price_cents = self.get_price(size, material)
 
         # Create Stripe checkout session
         session = stripe.checkout.Session.create(
