@@ -446,12 +446,13 @@ def create_checkout():
     Request body:
         - job_id: Job ID from /api/generate
         - email: Customer email
-        - size: Size key (mini, small, medium, large, xl)
+        - size: Size key (mini, small, medium, large, xl) or "custom"
         - material: Material key (plastic_white, plastic_color, etc.)
         - color: Optional color key (if material supports colors)
         - mesh_style: Optional mesh style (detailed, stylized)
         - shipping_address: Optional shipping address dict
         - provider: Payment provider (stripe, paypal)
+        - custom_height_mm: Required if size is "custom" (30-300mm)
     """
     data = request.get_json()
 
@@ -470,16 +471,49 @@ def create_checkout():
     mesh_style = data.get("mesh_style", "detailed")
     shipping_address = data.get("shipping_address", {})
     provider = data.get("provider", "stripe")
+    custom_height_mm = data.get("custom_height_mm")
 
     # Get country from shipping address for regional pricing
     shipping_country = shipping_address.get("country", "US").upper()
 
-    # Use regional pricing based on shipping country
+    # Handle custom size vs preset sizes
     try:
-        from regional_pricing import calculate_price as calc_regional_price
-        regional_price = calc_regional_price(size, shipping_country)
-        price_cents = regional_price.price_cents
-        print(f"[Checkout] Region: {regional_price.region_key}, Country: {shipping_country}, Size: {size}, Price: ${price_cents/100}")
+        if size == "custom":
+            # Validate custom height
+            if not custom_height_mm:
+                return jsonify({"error": "custom_height_mm required for custom size"}), 400
+
+            try:
+                custom_height_mm = float(custom_height_mm)
+            except (TypeError, ValueError):
+                return jsonify({"error": "custom_height_mm must be a number"}), 400
+
+            if custom_height_mm < 30 or custom_height_mm > 300:
+                return jsonify({"error": "custom_height_mm must be between 30 and 300mm"}), 400
+
+            # Calculate custom price
+            from mesh_scaler import calculate_price_for_height
+            from regional_pricing import get_region_for_country, PRICES, SIZES
+
+            region = get_region_for_country(shipping_country)
+            base_price = PRICES[region.key]["mini"]
+            base_height = SIZES["mini"].height_mm
+
+            price_cents = calculate_price_for_height(
+                height_mm=custom_height_mm,
+                base_price_cents=base_price,
+                base_height_mm=base_height,
+            )
+            print(f"[Checkout] Custom size: {custom_height_mm}mm, Region: {region.key}, Country: {shipping_country}, Price: ${price_cents/100}")
+
+            # Store custom height in size field for order
+            size = f"custom_{int(custom_height_mm)}mm"
+        else:
+            # Use standard regional pricing
+            from regional_pricing import calculate_price as calc_regional_price
+            regional_price = calc_regional_price(size, shipping_country)
+            price_cents = regional_price.price_cents
+            print(f"[Checkout] Region: {regional_price.region_key}, Country: {shipping_country}, Size: {size}, Price: ${price_cents/100}")
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
