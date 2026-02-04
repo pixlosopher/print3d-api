@@ -1289,6 +1289,47 @@ def get_order(order_id: str):
     return jsonify(order.to_dict())
 
 
+@app.route("/api/order/<order_id>/test-mark-paid", methods=["POST"])
+def test_mark_paid(order_id: str):
+    """
+    TEST ONLY: Mark order as paid without webhook.
+    Only works in Stripe test mode.
+    """
+    if not config.is_stripe_test_mode:
+        return jsonify({"error": "Only available in test mode"}), 403
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    # Mark as paid
+    from datetime import datetime
+    order_service.update_order(order_id, {
+        "status": "paid",
+        "paid_at": datetime.utcnow().isoformat(),
+    })
+
+    # Trigger 3D generation
+    job = job_service.get_job(order.job_id)
+    if job and job.get("image_url"):
+        # Start mesh generation in background
+        import threading
+        def generate_mesh():
+            try:
+                job_service.start_mesh_generation(order.job_id, order.size.replace("custom_", "").replace("mm", ""))
+            except Exception as e:
+                print(f"Mesh generation error: {e}")
+
+        thread = threading.Thread(target=generate_mesh)
+        thread.start()
+
+    return jsonify({
+        "success": True,
+        "message": "Order marked as paid, 3D generation started",
+        "order_id": order_id,
+    })
+
+
 @app.route("/api/orders")
 def list_orders():
     """List orders for an email."""
