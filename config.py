@@ -43,7 +43,7 @@ class Config(BaseSettings):
     output_dir: Path = Field(default=Path("./output"), description="Output directory for generated files")
     default_mesh_format: Literal["stl", "obj", "fbx", "glb"] = Field(default="stl", description="Default 3D format")
     default_size_mm: float = Field(default=50.0, description="Default model height in mm")
-    mesh_timeout_seconds: int = Field(default=300, description="Timeout for 3D generation")
+    mesh_timeout_seconds: int = Field(default=600, description="Timeout for 3D generation (10 min)")
 
     # Payment (Stripe)
     stripe_secret_key: str = Field(default="", description="Stripe secret API key")
