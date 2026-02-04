@@ -700,6 +700,101 @@ def admin_process_order(order_id: str):
     return jsonify(results)
 
 
+@app.route("/api/admin/regenerate-3d/<order_id>", methods=["POST"])
+def admin_regenerate_3d(order_id: str):
+    """Regenerate 3D model for an order and submit to Shapeways."""
+    admin_key = request.headers.get("X-Admin-Key")
+    if admin_key != "print3d-admin-2024":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    results = {"order_id": order_id, "job_id": order.job_id, "steps": []}
+
+    # Step 1: Regenerate 3D
+    try:
+        mesh_style = getattr(order, 'mesh_style', 'detailed')
+        material_key = order.material
+
+        print(f"[Admin] Regenerating 3D for job {order.job_id}...")
+        success = job_service.generate_mesh_for_job(
+            job_id=order.job_id,
+            mesh_style=mesh_style,
+            material_key=material_key,
+        )
+
+        if success:
+            results["steps"].append({"step": "generate_3d", "status": "success"})
+        else:
+            results["steps"].append({"step": "generate_3d", "status": "error", "error": "Generation failed"})
+            return jsonify(results)
+
+    except Exception as e:
+        results["steps"].append({"step": "generate_3d", "status": "error", "error": str(e)})
+        return jsonify(results)
+
+    # Step 2: Submit to Shapeways
+    try:
+        # Reload order to get fresh data
+        order = order_service.get_order(order_id)
+        job = job_service.get_job_status(order.job_id)
+
+        if job and job.get("mesh_path"):
+            mesh_path = resolve_mesh_path(job["mesh_path"])
+            if mesh_path.exists():
+                shipping_address = None
+                if hasattr(order, 'shipping_address') and order.shipping_address:
+                    addr = order.shipping_address
+                    if hasattr(addr, 'to_dict'):
+                        shipping_address = addr.to_dict()
+                    elif isinstance(addr, dict):
+                        shipping_address = addr
+
+                shapeways_result = shapeways_service.submit_order(
+                    mesh_path=mesh_path,
+                    material=order.material,
+                    shipping_address=shipping_address,
+                )
+
+                if shapeways_result.success:
+                    order_service.update_shapeways_id(
+                        order_id=order.id,
+                        shapeways_order_id=shapeways_result.shapeways_order_id,
+                    )
+                    results["steps"].append({
+                        "step": "shapeways",
+                        "status": "success",
+                        "shapeways_order_id": shapeways_result.shapeways_order_id
+                    })
+                else:
+                    results["steps"].append({
+                        "step": "shapeways",
+                        "status": "error",
+                        "error": shapeways_result.error_message
+                    })
+            else:
+                results["steps"].append({
+                    "step": "shapeways",
+                    "status": "error",
+                    "error": f"Mesh file not found: {mesh_path}"
+                })
+        else:
+            results["steps"].append({
+                "step": "shapeways",
+                "status": "error",
+                "error": "No mesh_path after generation"
+            })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        results["steps"].append({"step": "shapeways", "status": "error", "error": str(e)})
+
+    return jsonify(results)
+
+
 # ============ Orders ============
 
 @app.route("/api/order/<order_id>")
