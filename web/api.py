@@ -431,9 +431,19 @@ def submit_to_shapeways(order):
             if job and job.get("mesh_path"):
                 mesh_path = Path(config.output_dir) / job["mesh_path"].replace("/output/", "")
                 if mesh_path.exists():
+                    # Build shipping address dict for Shapeways
+                    shipping_address = None
+                    if hasattr(order, 'shipping_address') and order.shipping_address:
+                        addr = order.shipping_address
+                        if hasattr(addr, 'to_dict'):
+                            shipping_address = addr.to_dict()
+                        elif isinstance(addr, dict):
+                            shipping_address = addr
+
                     shapeways_result = shapeways_service.submit_order(
                         mesh_path=mesh_path,
                         material=order.material,
+                        shipping_address=shipping_address,
                     )
                     if shapeways_result.success:
                         order_service.update_shapeways_id(
@@ -450,7 +460,9 @@ def submit_to_shapeways(order):
         else:
             print("[Shapeways] Service not available")
     except Exception as e:
+        import traceback
         print(f"[Shapeways] Error: {e}")
+        traceback.print_exc()
 
 
 @app.route("/api/webhook/stripe", methods=["POST"])

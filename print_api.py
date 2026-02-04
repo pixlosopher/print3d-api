@@ -217,24 +217,25 @@ class PrintService:
     ) -> httpx.Response:
         """Make authenticated request."""
         await self._ensure_token()
-        
+
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self._access_token}"
-        
+
+        # Shapeways API uses /endpoint/v1 format, not /v1/endpoint
         response = await self.client.request(
             method,
-            f"/{self.API_VERSION}{path}",
+            path,
             headers=headers,
             **kwargs,
         )
-        
+
         if response.status_code >= 400:
             raise ShapewaysError(
                 f"API error: {response.text}",
                 status_code=response.status_code,
                 response=response.json() if response.content else None,
             )
-        
+
         return response
     
     async def upload_async(
@@ -242,38 +243,43 @@ class PrintService:
         file_path: Path | str,
         filename: str | None = None,
         has_rights: bool = True,
+        description: str = "3D model uploaded via API",
     ) -> ModelUpload:
         """
         Upload a 3D model file.
-        
+
         Args:
-            file_path: Path to STL/OBJ file
+            file_path: Path to STL/OBJ/GLB file
             filename: Display name (defaults to file name)
             has_rights: Confirm you have rights to print this model
-            
+            description: Model description (required by Shapeways)
+
         Returns:
             ModelUpload with model ID and analysis results
         """
+        import base64
+
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        
+
         filename = filename or file_path.name
-        
-        # Read file
+
+        # Read and encode file as base64 (required by Shapeways API)
         file_data = file_path.read_bytes()
-        
-        # Upload
+        file_base64 = base64.b64encode(file_data).decode("utf-8")
+
+        # Upload using JSON body with base64-encoded file
+        # Shapeways API format: /models/v1
         response = await self._request(
             "POST",
-            "/models",
-            files={
-                "file": (filename, file_data, "application/octet-stream"),
-            },
-            data={
+            "/models/v1",
+            json={
                 "fileName": filename,
-                "hasRightsToModel": "1" if has_rights else "0",
-                "acceptTermsAndConditions": "1",
+                "file": file_base64,
+                "description": description,
+                "hasRightsToModel": 1,
+                "acceptTermsAndConditions": 1,
             },
         )
         
@@ -303,16 +309,17 @@ class PrintService:
     async def get_pricing_async(self, model_id: str) -> PricingResult:
         """
         Get pricing for all available materials.
-        
+
         Args:
             model_id: The model ID from upload
-            
+
         Returns:
             PricingResult with material options and prices
         """
+        # Shapeways API format: /models/{modelId}/v1
         response = await self._request(
             "GET",
-            f"/models/{model_id}/prices",
+            f"/models/{model_id}/v1",
         )
         
         data = response.json()
@@ -347,10 +354,10 @@ class PrintService:
     ) -> dict:
         """
         Add items to shopping cart.
-        
+
         Args:
             items: List of CartItem objects
-            
+
         Returns:
             Cart data
         """
@@ -362,18 +369,70 @@ class PrintService:
             }
             for item in items
         ]
-        
+
+        # Note: Shapeways cart API may not be directly available
+        # This is a placeholder - actual ordering uses /orders/v1
         response = await self._request(
             "POST",
-            "/cart",
+            "/cart/v1",
             json={"items": cart_items},
         )
-        
+
         return response.json()
-    
+
     async def get_cart_async(self) -> dict:
         """Get current cart contents."""
-        response = await self._request("GET", "/cart")
+        response = await self._request("GET", "/cart/v1")
+        return response.json()
+
+    async def create_order_async(
+        self,
+        items: list[CartItem],
+        shipping_address: dict,
+        shipping_option: str = "Cheapest",
+    ) -> dict:
+        """
+        Create an order on Shapeways.
+
+        Args:
+            items: List of CartItem objects
+            shipping_address: Dict with firstName, lastName, country, state,
+                             city, address1, zipCode, phoneNumber
+            shipping_option: Shipping method (default: Cheapest)
+
+        Returns:
+            Order data with orderId
+        """
+        order_items = [
+            {
+                "modelId": item.model_id,
+                "materialId": item.material_id,
+                "quantity": item.quantity,
+            }
+            for item in items
+        ]
+
+        order_data = {
+            "items": order_items,
+            "firstName": shipping_address.get("firstName", ""),
+            "lastName": shipping_address.get("lastName", ""),
+            "country": shipping_address.get("country", "US"),
+            "state": shipping_address.get("state", ""),
+            "city": shipping_address.get("city", ""),
+            "address1": shipping_address.get("address1", ""),
+            "address2": shipping_address.get("address2", ""),
+            "zipCode": shipping_address.get("zipCode", ""),
+            "phoneNumber": shipping_address.get("phoneNumber", ""),
+            "shippingOption": shipping_option,
+            "paymentMethod": "credit_card",
+        }
+
+        response = await self._request(
+            "POST",
+            "/orders/v1",
+            json=order_data,
+        )
+
         return response.json()
     
     # Synchronous wrappers

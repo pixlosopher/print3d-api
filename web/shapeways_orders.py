@@ -125,6 +125,7 @@ class ShapewaysOrderService:
         self,
         model_id: str,
         material: str,
+        shipping_address: dict = None,
         quantity: int = 1,
     ) -> ShapewaysOrderResult:
         """
@@ -132,7 +133,8 @@ class ShapewaysOrderService:
 
         Args:
             model_id: Shapeways model ID from upload
-            material: Our material name (pla, resin)
+            material: Our material name (pla, resin, plastic_white, etc.)
+            shipping_address: Dict with name, address, city, state, zip, country, phone
             quantity: Number of prints
 
         Returns:
@@ -145,27 +147,63 @@ class ShapewaysOrderService:
             )
 
         # Map our material to Shapeways material ID
-        material_id = self.MATERIAL_MAP.get(material.lower(), self.MATERIAL_MAP["pla"])
+        # Extended mapping for new material keys
+        extended_material_map = {
+            **self.MATERIAL_MAP,
+            "plastic_white": "6",      # White Strong & Flexible
+            "plastic_color": "62",     # Strong & Flexible - colored
+            "resin_premium": "25",     # Frosted Ultra Detail
+            "full_color": "26",        # Full Color Sandstone
+            "metal_steel": "81",       # Stainless Steel
+        }
+        material_key = material.lower().replace("-", "_")
+        material_id = extended_material_map.get(material_key, "6")
 
         try:
-            # Add to cart
             cart_item = CartItem(
                 model_id=model_id,
                 material_id=material_id,
                 quantity=quantity,
             )
 
-            cart_result = await self.print_service.add_to_cart_async([cart_item])
+            # If we have shipping address, create full order
+            if shipping_address:
+                # Parse name into first/last
+                full_name = shipping_address.get("name", "Customer")
+                name_parts = full_name.split(" ", 1)
+                first_name = name_parts[0]
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
 
-            # Note: Full order creation requires checkout via Shapeways
-            # For now, we track the cart addition
-            # In production, you'd use Shapeways' checkout API or redirect user
+                shapeways_address = {
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "address1": shipping_address.get("address_line1", shipping_address.get("address", "")),
+                    "address2": shipping_address.get("address_line2", ""),
+                    "city": shipping_address.get("city", ""),
+                    "state": shipping_address.get("state", ""),
+                    "zipCode": shipping_address.get("postal_code", shipping_address.get("zip", "")),
+                    "country": shipping_address.get("country", "US"),
+                    "phoneNumber": shipping_address.get("phone", ""),
+                }
 
-            return ShapewaysOrderResult(
-                success=True,
-                shapeways_model_id=model_id,
-                shapeways_order_id=cart_result.get("cartId", "cart_added"),
-            )
+                order_result = await self.print_service.create_order_async(
+                    items=[cart_item],
+                    shipping_address=shapeways_address,
+                )
+
+                return ShapewaysOrderResult(
+                    success=True,
+                    shapeways_model_id=model_id,
+                    shapeways_order_id=str(order_result.get("orderId", order_result.get("result", {}).get("orderId", "unknown"))),
+                )
+            else:
+                # Fallback: just add to cart if no shipping address
+                cart_result = await self.print_service.add_to_cart_async([cart_item])
+                return ShapewaysOrderResult(
+                    success=True,
+                    shapeways_model_id=model_id,
+                    shapeways_order_id=cart_result.get("cartId", "cart_added"),
+                )
 
         except ShapewaysError as e:
             return ShapewaysOrderResult(
@@ -182,6 +220,7 @@ class ShapewaysOrderService:
         self,
         mesh_path: Path | str,
         material: str,
+        shipping_address: dict = None,
         quantity: int = 1,
     ) -> ShapewaysOrderResult:
         """
@@ -189,7 +228,8 @@ class ShapewaysOrderService:
 
         Args:
             mesh_path: Path to mesh file
-            material: Material name (pla, resin)
+            material: Material name (pla, resin, plastic_white, etc.)
+            shipping_address: Dict with shipping details
             quantity: Number of prints
 
         Returns:
@@ -209,10 +249,11 @@ class ShapewaysOrderService:
                 printability_issues=upload_result.printability_issues,
             )
 
-        # Step 2: Create order
+        # Step 2: Create order with shipping address
         order_result = await self.create_order_async(
             model_id=upload_result.shapeways_model_id,
             material=material,
+            shipping_address=shipping_address,
             quantity=quantity,
         )
 
@@ -244,13 +285,13 @@ class ShapewaysOrderService:
         """Sync wrapper for upload_model_async."""
         return self._run_async(self.upload_model_async(mesh_path))
 
-    def create_order(self, model_id: str, material: str, quantity: int = 1) -> ShapewaysOrderResult:
+    def create_order(self, model_id: str, material: str, shipping_address: dict = None, quantity: int = 1) -> ShapewaysOrderResult:
         """Sync wrapper for create_order_async."""
-        return self._run_async(self.create_order_async(model_id, material, quantity))
+        return self._run_async(self.create_order_async(model_id, material, shipping_address, quantity))
 
-    def submit_order(self, mesh_path: Path | str, material: str, quantity: int = 1) -> ShapewaysOrderResult:
+    def submit_order(self, mesh_path: Path | str, material: str, shipping_address: dict = None, quantity: int = 1) -> ShapewaysOrderResult:
         """Sync wrapper for submit_order_async."""
-        return self._run_async(self.submit_order_async(mesh_path, material, quantity))
+        return self._run_async(self.submit_order_async(mesh_path, material, shipping_address, quantity))
 
 
 # Singleton
