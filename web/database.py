@@ -17,8 +17,9 @@ from sqlalchemy.orm import sessionmaker, Session
 import enum
 
 
-# Get database URL from environment or use SQLite default
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./print3d.db")
+# Get database URL from environment or use SQLite on persistent disk
+# Note: /app/output is mounted as persistent storage on Render
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/output/print3d.db")
 
 # SQLite specific: check_same_thread=False for multi-threaded access
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
