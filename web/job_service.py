@@ -157,13 +157,16 @@ class RealJobService:
                     print(f"[{job_id}] No concept image found")
                     return False
 
+                # Save image_path before session closes (to avoid detached instance error)
+                job_image_path = job.image_path
+
                 # Update status
                 update_job(db, job_id, status=JobStatusEnum.CONVERTING_3D.value, progress=50)
 
             print(f"[{job_id}] Generating 3D mesh (style: {mesh_style}, material: {material_key})...")
 
-            # Build image path
-            image_path = self.output_dir / job.image_path.replace("/output/", "")
+            # Build image path (use saved variable, not detached job object)
+            image_path = self.output_dir / job_image_path.replace("/output/", "")
 
             # Convert image to data URI for Meshy
             with open(image_path, 'rb') as f:
