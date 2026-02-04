@@ -202,6 +202,75 @@ def get_regional_price_for_size(country_code: str, size_key: str):
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/pricing/custom", methods=["POST"])
+def get_custom_height_price():
+    """
+    Calculate price for a custom height.
+
+    Request body:
+        - height_mm: Desired height in millimeters (30-300mm)
+        - country_code: ISO 3166-1 alpha-2 code (e.g., "MX", "US")
+
+    Returns:
+        Price details for custom height.
+    """
+    from regional_pricing import get_region_for_country, PRICES, SIZES
+    from mesh_scaler import calculate_price_for_height, get_preset_or_custom_price
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    height_mm = data.get("height_mm")
+    country_code = data.get("country_code", "MX")
+
+    if height_mm is None:
+        return jsonify({"error": "height_mm is required"}), 400
+
+    try:
+        height_mm = float(height_mm)
+    except (TypeError, ValueError):
+        return jsonify({"error": "height_mm must be a number"}), 400
+
+    # Constrain to reasonable range
+    if height_mm < 30 or height_mm > 300:
+        return jsonify({
+            "error": "height_mm must be between 30 and 300mm",
+            "min": 30,
+            "max": 300,
+        }), 400
+
+    # Get region and base price
+    region = get_region_for_country(country_code)
+    base_price = PRICES[region.key]["mini"]
+    base_height = SIZES["mini"].height_mm
+
+    # Calculate custom price
+    price_cents = calculate_price_for_height(
+        height_mm=height_mm,
+        base_price_cents=base_price,
+        base_height_mm=base_height,
+    )
+
+    return jsonify({
+        "height_mm": height_mm,
+        "country_code": country_code.upper(),
+        "region": {
+            "key": region.key,
+            "name": region.name,
+            "name_es": region.name_es,
+        },
+        "price_cents": price_cents,
+        "price_usd": price_cents / 100,
+        "price_display": f"${price_cents / 100:.0f}",
+        "is_custom": True,
+        "constraints": {
+            "min_height_mm": 30,
+            "max_height_mm": 300,
+        },
+    })
+
+
 @app.route("/api/generate", methods=["POST"])
 def generate_concept():
     """
