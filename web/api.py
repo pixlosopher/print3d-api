@@ -827,10 +827,14 @@ def admin_dashboard():
         pending_production = list_orders_for_admin(db, status="paid", limit=20)
         processing = list_orders_for_admin(db, status="processing", limit=20)
 
+        # Convert to dicts while still in session
+        pending_dicts = [o.to_dict() for o in pending_production]
+        processing_dicts = [o.to_dict() for o in processing]
+
     return jsonify({
         "status_counts": status_counts,
-        "pending_production": [o.to_dict() for o in pending_production],
-        "processing": [o.to_dict() for o in processing],
+        "pending_production": pending_dicts,
+        "processing": processing_dicts,
         "timestamp": datetime.utcnow().isoformat(),
     })
 
@@ -857,13 +861,14 @@ def admin_list_orders():
     with get_db_session() as db:
         orders = list_orders_for_admin(db, status=status, limit=limit, offset=offset)
 
-        # Enrich with job info for each order
+        # Enrich with job info for each order (must be done inside session)
         enriched_orders = []
         for order in orders:
             order_dict = order.to_dict()
+            job_id = order.job_id  # Capture before leaving session
 
             # Get job info to include image/mesh paths
-            job = job_service.get_job_status(order.job_id)
+            job = job_service.get_job_status(job_id)
             if job:
                 order_dict["job"] = {
                     "description": job.get("description"),
