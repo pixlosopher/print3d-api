@@ -365,7 +365,27 @@ class ImageGenerator:
         Returns:
             ImageResult with URL and metadata
         """
-        return asyncio.run(self.generate_async(prompt, style, size, save_to))
+        # Handle running in different contexts (main thread, worker thread, etc.)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # We're inside an async context or a thread with a running loop
+            # Create a new loop in a thread-safe way
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    self.generate_async(prompt, style, size, save_to)
+                )
+                return future.result()
+        else:
+            # No loop running, safe to use asyncio.run
+            # Create a fresh client for this call to avoid closed loop issues
+            self._client = None
+            return asyncio.run(self.generate_async(prompt, style, size, save_to))
 
     def generate_for_3d(
         self,
