@@ -191,7 +191,7 @@ class ShapewaysOrderService:
                     "state": shipping_address.get("state", ""),
                     "zipCode": shipping_address.get("postal_code", shipping_address.get("zip", "")),
                     "country": shipping_address.get("country", "US"),
-                    "phoneNumber": shipping_address.get("phone", ""),
+                    "phoneNumber": shipping_address.get("phone", "") or "+1 000-000-0000",  # Shapeways requires phone
                 }
 
                 print(f"[Shapeways] Creating order with address: {shapeways_address}")
