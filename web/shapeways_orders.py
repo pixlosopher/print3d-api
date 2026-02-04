@@ -174,46 +174,18 @@ class ShapewaysOrderService:
                 quantity=quantity,
             )
 
-            # If we have shipping address, create full order
-            if shipping_address:
-                # Parse name into first/last
-                full_name = shipping_address.get("name", "Customer")
-                name_parts = full_name.split(" ", 1)
-                first_name = name_parts[0]
-                last_name = name_parts[1] if len(name_parts) > 1 else ""
+            # Add to cart instead of creating full order
+            # (Creating order requires billing address configured in Shapeways account)
+            # The order can be completed manually in Shapeways dashboard
+            print(f"[Shapeways] Adding to cart (model_id={model_id}, material={material_id})")
+            cart_result = await self.print_service.add_to_cart_async([cart_item])
+            print(f"[Shapeways] Cart result: {cart_result}")
 
-                shapeways_address = {
-                    "firstName": first_name,
-                    "lastName": last_name,
-                    "address1": shipping_address.get("address_line1", shipping_address.get("address", "")),
-                    "address2": shipping_address.get("address_line2", ""),
-                    "city": shipping_address.get("city", ""),
-                    "state": shipping_address.get("state", ""),
-                    "zipCode": shipping_address.get("postal_code", shipping_address.get("zip", "")),
-                    "country": shipping_address.get("country", "US"),
-                    "phoneNumber": shipping_address.get("phone", "") or "+1 000-000-0000",  # Shapeways requires phone
-                }
-
-                print(f"[Shapeways] Creating order with address: {shapeways_address}")
-                order_result = await self.print_service.create_order_async(
-                    items=[cart_item],
-                    shipping_address=shapeways_address,
-                )
-                print(f"[Shapeways] Order result: {order_result}")
-
-                return ShapewaysOrderResult(
-                    success=True,
-                    shapeways_model_id=model_id,
-                    shapeways_order_id=str(order_result.get("orderId", order_result.get("result", {}).get("orderId", "unknown"))),
-                )
-            else:
-                # Fallback: just add to cart if no shipping address
-                cart_result = await self.print_service.add_to_cart_async([cart_item])
-                return ShapewaysOrderResult(
-                    success=True,
-                    shapeways_model_id=model_id,
-                    shapeways_order_id=cart_result.get("cartId", "cart_added"),
-                )
+            return ShapewaysOrderResult(
+                success=True,
+                shapeways_model_id=model_id,
+                shapeways_order_id=f"cart_{model_id}",  # Indicate it's in cart, not ordered
+            )
 
         except ShapewaysError as e:
             print(f"[Shapeways] API Error: {e.message} (status: {e.status_code})")
