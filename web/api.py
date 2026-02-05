@@ -1302,12 +1302,8 @@ def test_mark_paid(order_id: str):
     if not order:
         return jsonify({"error": "Order not found"}), 404
 
-    # Mark as paid
-    from datetime import datetime
-    order_service.update_order(order_id, {
-        "status": "paid",
-        "paid_at": datetime.utcnow().isoformat(),
-    })
+    # Mark as paid using existing method
+    order_service.mark_paid(order_id, payment_id="test_payment", payment_provider="stripe_test")
 
     # Trigger 3D generation
     job = job_service.get_job(order.job_id)
