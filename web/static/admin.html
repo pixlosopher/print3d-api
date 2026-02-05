@@ -313,6 +313,51 @@
             background: #0d9668;
         }
 
+        .action-btn.danger {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        .action-btn.danger:hover {
+            background: #dc2626;
+        }
+
+        .action-btn.warning {
+            background: #f59e0b;
+            color: #000;
+        }
+
+        .action-btn.warning:hover {
+            background: #d97706;
+        }
+
+        .archived-row {
+            opacity: 0.5;
+            background: #1a1a1a;
+        }
+
+        .archived-badge {
+            background: #666;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            margin-left: 8px;
+        }
+
+        .toggle-archived {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #888;
+            cursor: pointer;
+        }
+
+        .toggle-archived input {
+            cursor: pointer;
+        }
+
         /* Modal */
         .modal-overlay {
             display: none;
@@ -537,11 +582,17 @@
             <!-- Orders Table -->
             <div class="section-title">
                 <span>Órdenes</span>
-                <div class="filter-tabs">
-                    <button class="filter-tab active" data-status="">Todas</button>
-                    <button class="filter-tab" data-status="paid">Por Producir</button>
-                    <button class="filter-tab" data-status="processing">En Proceso</button>
-                    <button class="filter-tab" data-status="shipped">Enviadas</button>
+                <div style="display: flex; align-items: center; gap: 24px;">
+                    <label class="toggle-archived">
+                        <input type="checkbox" id="showArchived" onchange="loadOrders()">
+                        Mostrar archivadas
+                    </label>
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" data-status="">Todas</button>
+                        <button class="filter-tab" data-status="paid">Por Producir</button>
+                        <button class="filter-tab" data-status="processing">En Proceso</button>
+                        <button class="filter-tab" data-status="shipped">Enviadas</button>
+                    </div>
                 </div>
             </div>
 
@@ -703,8 +754,12 @@
 
         // Load orders
         async function loadOrders() {
-            const statusParam = currentFilter ? `?status=${currentFilter}` : '';
-            const data = await apiCall(`/api/admin/orders${statusParam}`);
+            const includeArchived = document.getElementById('showArchived')?.checked || false;
+            let params = [];
+            if (currentFilter) params.push(`status=${currentFilter}`);
+            if (includeArchived) params.push('include_archived=true');
+            const queryString = params.length > 0 ? `?${params.join('&')}` : '';
+            const data = await apiCall(`/api/admin/orders${queryString}`);
             ordersData = data.orders || [];
             renderOrders();
         }
@@ -719,8 +774,11 @@
             }
 
             tbody.innerHTML = ordersData.map(order => `
-                <tr>
-                    <td><strong>${order.id}</strong></td>
+                <tr class="${order.archived ? 'archived-row' : ''}">
+                    <td>
+                        <strong>${order.id}</strong>
+                        ${order.archived ? '<span class="archived-badge">ARCHIVADA</span>' : ''}
+                    </td>
                     <td>
                         <div>${order.email}</div>
                         <div style="color: #888; font-size: 12px;">${order.shipping?.name || '-'}</div>
@@ -740,8 +798,13 @@
                         <div style="color: #888; font-size: 12px;">${new Date(order.created_at).toLocaleTimeString()}</div>
                     </td>
                     <td>
-                        <button class="action-btn" onclick="viewOrder('${order.id}')">👁️ Ver</button>
-                        ${order.job?.mesh_path ? `<button class="action-btn primary" onclick="downloadMesh('${order.id}')">⬇️ GLB</button>` : ''}
+                        <button class="action-btn" onclick="viewOrder('${order.id}')">👁️</button>
+                        ${order.job?.mesh_path ? `<button class="action-btn primary" onclick="downloadMesh('${order.id}')">⬇️</button>` : ''}
+                        ${order.archived
+                            ? `<button class="action-btn warning" onclick="unarchiveOrder('${order.id}')" title="Restaurar">↩️</button>`
+                            : `<button class="action-btn" onclick="archiveOrder('${order.id}')" title="Archivar">📁</button>`
+                        }
+                        <button class="action-btn danger" onclick="deleteOrder('${order.id}')" title="Eliminar">🗑️</button>
                     </td>
                 </tr>
             `).join('');
@@ -942,6 +1005,58 @@
             setTimeout(() => {
                 toast.className = 'toast';
             }, 3000);
+        }
+
+        // Archive order
+        async function archiveOrder(orderId) {
+            if (!confirm(`¿Archivar la orden ${orderId}? Podrás restaurarla después.`)) {
+                return;
+            }
+
+            try {
+                await apiCall(`/api/admin/orders/${orderId}/archive`, {
+                    method: 'POST',
+                });
+                showToast('✅ Orden archivada');
+                loadOrders();
+            } catch (error) {
+                showToast('Error: ' + error.message, true);
+            }
+        }
+
+        // Unarchive order
+        async function unarchiveOrder(orderId) {
+            try {
+                await apiCall(`/api/admin/orders/${orderId}/unarchive`, {
+                    method: 'POST',
+                });
+                showToast('✅ Orden restaurada');
+                loadOrders();
+            } catch (error) {
+                showToast('Error: ' + error.message, true);
+            }
+        }
+
+        // Delete order permanently
+        async function deleteOrder(orderId) {
+            if (!confirm(`⚠️ ¿ELIMINAR PERMANENTEMENTE la orden ${orderId}?\n\nEsta acción NO se puede deshacer.`)) {
+                return;
+            }
+
+            // Double confirmation for safety
+            if (!confirm(`¿Estás seguro? Se perderán todos los datos de esta orden.`)) {
+                return;
+            }
+
+            try {
+                await apiCall(`/api/admin/orders/${orderId}`, {
+                    method: 'DELETE',
+                });
+                showToast('🗑️ Orden eliminada permanentemente');
+                loadOrders();
+            } catch (error) {
+                showToast('Error: ' + error.message, true);
+            }
         }
 
         // Close modal on outside click
