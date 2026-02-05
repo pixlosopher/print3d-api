@@ -718,6 +718,7 @@ def stripe_webhook():
                     # Capture order_id to reload fresh order in thread
                     order_id_for_thread = order.id
                     job_id_for_thread = order.job_id
+                    customer_email_for_thread = order.customer_email
 
                     import threading
                     def generate_and_submit():
@@ -730,6 +731,21 @@ def stripe_webhook():
                             )
                             if success:
                                 print(f"[Webhook Thread] 3D generated for {job_id_for_thread}")
+
+                                # Send "Model Ready" email notification
+                                try:
+                                    if email_service.is_available:
+                                        email_result = email_service.send_model_ready_notification(
+                                            to_email=customer_email_for_thread,
+                                            order_id=order_id_for_thread,
+                                        )
+                                        if email_result.success:
+                                            print(f"[Webhook Thread] Model ready email sent to {customer_email_for_thread}")
+                                        else:
+                                            print(f"[Webhook Thread] Model ready email failed: {email_result.error}")
+                                except Exception as email_error:
+                                    print(f"[Webhook Thread] Failed to send model ready email: {email_error}")
+
                                 # Reload order from DB to get fresh session
                                 fresh_order = order_service.get_order(order_id_for_thread)
                                 if fresh_order:
