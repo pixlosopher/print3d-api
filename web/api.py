@@ -1019,6 +1019,7 @@ def admin_list_orders():
         - status: Filter by status (paid, processing, shipped, etc.)
         - limit: Max results (default 50)
         - offset: Pagination offset (default 0)
+        - include_archived: Include archived orders (default false)
     """
     if not verify_admin(request):
         return jsonify({"error": "Unauthorized"}), 401
@@ -1028,9 +1029,10 @@ def admin_list_orders():
     status = request.args.get("status")
     limit = int(request.args.get("limit", 50))
     offset = int(request.args.get("offset", 0))
+    include_archived = request.args.get("include_archived", "false").lower() == "true"
 
     with get_db_session() as db:
-        orders = list_orders_for_admin(db, status=status, limit=limit, offset=offset)
+        orders = list_orders_for_admin(db, status=status, limit=limit, offset=offset, include_archived=include_archived)
 
         # Enrich with job info for each order (must be done inside session)
         enriched_orders = []
@@ -1289,6 +1291,72 @@ def admin_update_status(order_id: str):
             "success": True,
             "order_id": order_id,
             "status": new_status,
+        })
+
+
+@app.route("/api/admin/orders/<order_id>/archive", methods=["POST"])
+def admin_archive_order(order_id: str):
+    """Archive an order (soft delete - hides from list but keeps data)."""
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from web.database import get_db_session, archive_order
+
+    with get_db_session() as db:
+        order = archive_order(db, order_id)
+        if not order:
+            return jsonify({"error": "Order not found"}), 404
+
+        return jsonify({
+            "success": True,
+            "order_id": order_id,
+            "archived": True,
+            "message": "Order archived successfully",
+        })
+
+
+@app.route("/api/admin/orders/<order_id>/unarchive", methods=["POST"])
+def admin_unarchive_order(order_id: str):
+    """Unarchive an order (restore to list)."""
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from web.database import get_db_session, unarchive_order
+
+    with get_db_session() as db:
+        order = unarchive_order(db, order_id)
+        if not order:
+            return jsonify({"error": "Order not found"}), 404
+
+        return jsonify({
+            "success": True,
+            "order_id": order_id,
+            "archived": False,
+            "message": "Order restored successfully",
+        })
+
+
+@app.route("/api/admin/orders/<order_id>", methods=["DELETE"])
+def admin_delete_order(order_id: str):
+    """
+    Permanently delete an order (cannot be undone).
+
+    WARNING: This action is irreversible. Use archive instead for soft delete.
+    """
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from web.database import get_db_session, delete_order_permanently
+
+    with get_db_session() as db:
+        success = delete_order_permanently(db, order_id)
+        if not success:
+            return jsonify({"error": "Order not found"}), 404
+
+        return jsonify({
+            "success": True,
+            "order_id": order_id,
+            "message": "Order permanently deleted",
         })
 
 

@@ -143,6 +143,9 @@ class OrderModel(Base):
     shipping_cost_usd = Column(Float, nullable=True)  # Actual shipping cost
     admin_notes = Column(Text, nullable=True)  # Internal notes for admin
 
+    # Archive flag
+    archived = Column(Boolean, default=False)  # Hide from main list but keep data
+
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
         return {
@@ -175,6 +178,8 @@ class OrderModel(Base):
             "production_cost_usd": self.production_cost_usd,
             "shipping_cost_usd": self.shipping_cost_usd,
             "admin_notes": self.admin_notes,
+            # Archive flag
+            "archived": self.archived or False,
         }
 
 
@@ -323,12 +328,47 @@ def list_orders_for_admin(
     status: str = None,
     limit: int = 50,
     offset: int = 0,
+    include_archived: bool = False,
 ) -> list[OrderModel]:
     """List orders for admin dashboard with optional status filter."""
     query = db.query(OrderModel)
+    if not include_archived:
+        query = query.filter((OrderModel.archived == False) | (OrderModel.archived == None))
     if status:
         query = query.filter(OrderModel.status == status)
     return query.order_by(OrderModel.created_at.desc()).offset(offset).limit(limit).all()
+
+
+def archive_order(db: Session, order_id: str) -> Optional[OrderModel]:
+    """Archive an order (soft delete - hides from list but keeps data)."""
+    order = get_order(db, order_id)
+    if order:
+        order.archived = True
+        order.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(order)
+    return order
+
+
+def unarchive_order(db: Session, order_id: str) -> Optional[OrderModel]:
+    """Unarchive an order (restore to list)."""
+    order = get_order(db, order_id)
+    if order:
+        order.archived = False
+        order.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(order)
+    return order
+
+
+def delete_order_permanently(db: Session, order_id: str) -> bool:
+    """Permanently delete an order (cannot be undone)."""
+    order = get_order(db, order_id)
+    if order:
+        db.delete(order)
+        db.commit()
+        return True
+    return False
 
 
 def count_orders_by_status(db: Session) -> dict:
