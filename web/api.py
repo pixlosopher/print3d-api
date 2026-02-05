@@ -1295,15 +1295,20 @@ def test_mark_paid(order_id: str):
     TEST ONLY: Mark order as paid without webhook.
     Only works in Stripe test mode.
     """
-    if not config.is_stripe_test_mode:
-        return jsonify({"error": "Only available in test mode"}), 403
+    try:
+        if not config.is_stripe_test_mode:
+            return jsonify({"error": "Only available in test mode"}), 403
 
-    order = order_service.get_order(order_id)
-    if not order:
-        return jsonify({"error": "Order not found"}), 404
+        order = order_service.get_order(order_id)
+        if not order:
+            return jsonify({"error": "Order not found"}), 404
 
-    # Mark as paid using existing method
-    order_service.mark_paid(order_id, payment_id="test_payment", payment_provider="stripe_test")
+        # Mark as paid using existing method
+        order_service.mark_paid(order_id, payment_id="test_payment", payment_provider="stripe_test")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
     # Trigger 3D generation
     job = job_service.get_job(order.job_id)
