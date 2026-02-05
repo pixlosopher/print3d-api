@@ -1312,20 +1312,35 @@ def test_mark_paid(order_id: str):
     # Trigger 3D generation
     job = job_service.get_job(order.job_id)
     if job and job.get("image_url"):
+        # Extract size in mm
+        size_str = order.size.replace("custom_", "").replace("mm", "")
+        try:
+            size_mm = float(size_str)
+        except:
+            size_mm = 50.0
+
         # Start mesh generation in background
         import threading
-        def generate_mesh():
+        def generate_mesh_bg():
             try:
-                job_service.start_mesh_generation(order.job_id, order.size.replace("custom_", "").replace("mm", ""))
+                print(f"[TEST-PAID] Starting mesh generation for job {order.job_id}, size {size_mm}mm")
+                job_service.generate_mesh_for_job(order.job_id, size_mm)
+                print(f"[TEST-PAID] Mesh generation completed for job {order.job_id}")
             except Exception as e:
-                print(f"Mesh generation error: {e}")
+                print(f"[TEST-PAID] Mesh generation error: {e}")
 
-        thread = threading.Thread(target=generate_mesh)
+        thread = threading.Thread(target=generate_mesh_bg)
         thread.start()
+
+        return jsonify({
+            "success": True,
+            "message": f"Order marked as paid, 3D generation started ({size_mm}mm)",
+            "order_id": order_id,
+        })
 
     return jsonify({
         "success": True,
-        "message": "Order marked as paid, 3D generation started",
+        "message": "Order marked as paid (no image found for 3D generation)",
         "order_id": order_id,
     })
 
