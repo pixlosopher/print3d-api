@@ -1345,6 +1345,40 @@ def test_mark_paid(order_id: str):
     })
 
 
+@app.route("/api/test-email", methods=["POST"])
+def test_email():
+    """Test email sending. Only works in test mode."""
+    if not config.is_stripe_test_mode:
+        return jsonify({"error": "Only available in test mode"}), 403
+
+    to_email = request.json.get("email", "test@example.com")
+
+    if not email_service.is_available:
+        return jsonify({
+            "success": False,
+            "error": "Email service not available",
+            "has_resend_key": bool(config.resend_api_key),
+            "from_email": config.from_email,
+        }), 500
+
+    result = email_service.send_order_confirmation(
+        to_email=to_email,
+        order_id="TEST123",
+        order_details={
+            "size": "100mm",
+            "material": "PLA",
+            "price": "$99.00",
+        }
+    )
+
+    return jsonify({
+        "success": result.success,
+        "message_id": result.message_id,
+        "error": result.error,
+        "from_email": config.from_email,
+    })
+
+
 @app.route("/api/orders")
 def list_orders():
     """List orders for an email."""
