@@ -188,6 +188,27 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     print("[DB] Database initialized")
 
+    # Run migrations for existing tables
+    _run_migrations()
+
+
+def _run_migrations():
+    """Run database migrations for new columns."""
+    from sqlalchemy import text, inspect
+
+    inspector = inspect(engine)
+
+    # Check if 'orders' table exists
+    if 'orders' in inspector.get_table_names():
+        columns = [col['name'] for col in inspector.get_columns('orders')]
+
+        # Add 'archived' column if it doesn't exist
+        if 'archived' not in columns:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE orders ADD COLUMN archived BOOLEAN DEFAULT 0"))
+                conn.commit()
+                print("[DB] Migration: Added 'archived' column to orders table")
+
 
 def get_db() -> Session:
     """Get database session."""
