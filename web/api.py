@@ -222,13 +222,54 @@ def get_regional_pricing(country_code: str):
 
     Returns:
         Price table with all sizes for that country.
+        Uses plastic_white as the default material for simplified pricing.
     """
-    from regional_pricing import get_price_table
+    from regional_pricing import (
+        get_region_for_country,
+        get_shipping_zone,
+        calculate_price,
+        SIZES,
+        get_local_currency_display,
+    )
 
     try:
-        price_table = get_price_table(country_code)
-        return jsonify(price_table)
+        region = get_region_for_country(country_code)
+        shipping_zone = get_shipping_zone(country_code)
+
+        # Build sizes array with plastic_white prices (simplified frontend pricing)
+        sizes = []
+        for size_key, size in SIZES.items():
+            price = calculate_price("plastic_white", size_key, country_code)
+            sizes.append({
+                "key": size_key,
+                "name": size.name,
+                "name_es": size.name_es,
+                "height_mm": size.height_mm,
+                "description": size.description,
+                "description_es": size.description_es,
+                "price_cents": price.regional_price_cents,
+                "price_usd": price.price_usd,
+                "price_display": price.price_display,
+                "local_currency": price.local_currency,
+            })
+
+        return jsonify({
+            "country_code": country_code.upper(),
+            "region": {
+                "key": region.key,
+                "name": region.name,
+                "name_es": region.name_es,
+            },
+            "currency": "USD",
+            "sizes": sizes,
+            "shipping": {
+                "zone": shipping_zone.key,
+                "free_threshold_cents": shipping_zone.free_shipping_threshold_cents,
+                "free_threshold_display": f"${shipping_zone.free_shipping_threshold_cents / 100:.0f}",
+            },
+        })
     except Exception as e:
+        logger.error(f"Error getting regional pricing: {e}")
         return jsonify({"error": str(e)}), 400
 
 
@@ -239,15 +280,17 @@ def get_regional_price_for_size(country_code: str, size_key: str):
 
     Args:
         country_code: ISO 3166-1 alpha-2 code (e.g., "MX", "US")
-        size_key: Size key (mini, small, medium, large)
+        size_key: Size key (mini, small, medium, large, xl)
 
     Returns:
         Price details for that specific configuration.
+        Uses plastic_white as default material.
     """
     from regional_pricing import calculate_price as calc_regional_price
 
     try:
-        price_result = calc_regional_price(size_key, country_code)
+        # Default to plastic_white material for simplified frontend
+        price_result = calc_regional_price("plastic_white", size_key, country_code)
         return jsonify(price_result.to_dict())
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -265,8 +308,8 @@ def get_custom_height_price():
     Returns:
         Price details for custom height.
     """
-    from regional_pricing import get_region_for_country, PRICES, SIZES
-    from mesh_scaler import calculate_price_for_height, get_preset_or_custom_price
+    from regional_pricing import get_region_for_country, BASE_PRICES, SIZES
+    from mesh_scaler import calculate_price_for_height
 
     data = request.get_json()
     if not data:
@@ -291,17 +334,23 @@ def get_custom_height_price():
             "max": 300,
         }), 400
 
-    # Get region and base price
+    # Get region and base price (using plastic_white as default material)
     region = get_region_for_country(country_code)
-    base_price = PRICES[region.key]["mini"]
+    base_price = BASE_PRICES["plastic_white"]["mini"]  # LATAM base price for mini
     base_height = SIZES["mini"].height_mm
 
-    # Calculate custom price
+    # Calculate custom price based on height scaling
     price_cents = calculate_price_for_height(
         height_mm=height_mm,
         base_price_cents=base_price,
         base_height_mm=base_height,
     )
+
+    # Apply regional multiplier
+    price_cents = int(price_cents * region.price_multiplier)
+
+    # Round to nearest dollar for cleaner display
+    price_cents = round(price_cents / 100) * 100
 
     return jsonify({
         "height_mm": height_mm,
