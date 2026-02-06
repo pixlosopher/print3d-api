@@ -1110,6 +1110,7 @@ def admin_list_orders():
                     "description": job.get("description"),
                     "image_url": job.get("image_url"),
                     "mesh_path": job.get("mesh_path"),
+                    "mesh_urls": job.get("mesh_urls", {}),  # All format URLs from Meshy
                     "status": job.get("status"),
                 }
 
