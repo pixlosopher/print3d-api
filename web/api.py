@@ -1089,39 +1089,55 @@ def admin_list_orders():
     """
     from web.database import get_db_session, list_orders_for_admin
 
-    status = request.args.get("status")
-    limit = int(request.args.get("limit", 50))
-    offset = int(request.args.get("offset", 0))
-    include_archived = request.args.get("include_archived", "false").lower() == "true"
+    try:
+        status = request.args.get("status")
+        limit = int(request.args.get("limit", 50))
+        offset = int(request.args.get("offset", 0))
+        include_archived = request.args.get("include_archived", "false").lower() == "true"
 
-    with get_db_session() as db:
-        orders = list_orders_for_admin(db, status=status, limit=limit, offset=offset, include_archived=include_archived)
+        with get_db_session() as db:
+            orders = list_orders_for_admin(db, status=status, limit=limit, offset=offset, include_archived=include_archived)
 
-        # Enrich with job info for each order (must be done inside session)
-        enriched_orders = []
-        for order in orders:
-            order_dict = order.to_dict()
-            job_id = order.job_id  # Capture before leaving session
+            # Enrich with job info for each order (must be done inside session)
+            enriched_orders = []
+            for order in orders:
+                try:
+                    order_dict = order.to_dict()
+                    job_id = order.job_id  # Capture before leaving session
 
-            # Get job info to include image/mesh paths
-            job = job_service.get_job_status(job_id)
-            if job:
-                order_dict["job"] = {
-                    "description": job.get("description"),
-                    "image_url": job.get("image_url"),
-                    "mesh_path": job.get("mesh_path"),
-                    "mesh_urls": job.get("mesh_urls", {}),  # All format URLs from Meshy
-                    "status": job.get("status"),
-                }
+                    # Get job info to include image/mesh paths
+                    job = job_service.get_job_status(job_id)
+                    if job:
+                        # Ensure mesh_urls is a proper dict (not None)
+                        mesh_urls = job.get("mesh_urls")
+                        if not isinstance(mesh_urls, dict):
+                            mesh_urls = {}
 
-            enriched_orders.append(order_dict)
+                        order_dict["job"] = {
+                            "description": job.get("description"),
+                            "image_url": job.get("image_url"),
+                            "mesh_path": job.get("mesh_path"),
+                            "mesh_urls": mesh_urls,
+                            "status": job.get("status"),
+                        }
 
-    return jsonify({
-        "orders": enriched_orders,
-        "total": len(enriched_orders),
-        "limit": limit,
-        "offset": offset,
-    })
+                    enriched_orders.append(order_dict)
+                except Exception as e:
+                    print(f"[admin_list_orders] Error processing order {order.id}: {e}")
+                    # Still include the order, just without job info
+                    enriched_orders.append(order.to_dict())
+
+        return jsonify({
+            "orders": enriched_orders,
+            "total": len(enriched_orders),
+            "limit": limit,
+            "offset": offset,
+        })
+    except Exception as e:
+        print(f"[admin_list_orders] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/admin/orders/<order_id>")
