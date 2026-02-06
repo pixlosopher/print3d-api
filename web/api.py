@@ -1541,7 +1541,8 @@ def serve_output(filename: str):
 
     Security:
     - Images (PNG, JPG) are public (concept previews for users)
-    - 3D files (GLB, STL, OBJ) require auth or job_id ownership
+    - GLB files are public (3D previews shown to users)
+    - STL/OBJ files require auth (downloadable production files)
     """
     output_dir = Path(config.output_dir).resolve()
 
@@ -1549,7 +1550,11 @@ def serve_output(filename: str):
     if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
         return send_from_directory(output_dir, filename)
 
-    # 3D files require authentication
+    # GLB files are public (used for 3D preview in browser, not printable)
+    if filename.lower().endswith('.glb'):
+        return send_from_directory(output_dir, filename)
+
+    # STL/OBJ/FBX files require authentication (production files)
     # Admin access always allowed
     if verify_admin(request):
         return send_from_directory(output_dir, filename)
