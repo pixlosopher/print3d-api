@@ -1502,19 +1502,24 @@ def serve_admin_dashboard():
 def serve_output(filename: str):
     """Serve generated files.
 
-    Security: Files are served only if:
-    1. Admin with valid key, OR
-    2. Request has valid job_id that owns the file
+    Security:
+    - Images (PNG, JPG) are public (concept previews for users)
+    - 3D files (GLB, STL, OBJ) require auth or job_id ownership
     """
+    output_dir = Path(config.output_dir).resolve()
+
+    # Images are public (concept previews shown to users before purchase)
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+        return send_from_directory(output_dir, filename)
+
+    # 3D files require authentication
     # Admin access always allowed
     if verify_admin(request):
-        output_dir = Path(config.output_dir).resolve()
         return send_from_directory(output_dir, filename)
 
     # For non-admin, verify job ownership via job_id parameter
     job_id = request.args.get("job_id")
     if job_id and filename.startswith(job_id):
-        output_dir = Path(config.output_dir).resolve()
         return send_from_directory(output_dir, filename)
 
     return jsonify({"error": "Unauthorized - provide job_id or admin key"}), 401
