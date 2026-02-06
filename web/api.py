@@ -593,10 +593,11 @@ def create_checkout():
 
             # Calculate custom price
             from mesh_scaler import calculate_price_for_height
-            from regional_pricing import get_region_for_country, PRICES, SIZES
+            from regional_pricing import get_region_for_country, BASE_PRICES, SIZES
 
             region = get_region_for_country(shipping_country)
-            base_price = PRICES[region.key]["mini"]
+            # Use plastic_white as base material for custom sizes
+            base_price = BASE_PRICES["plastic_white"]["mini"]  # LATAM base price
             base_height = SIZES["mini"].height_mm
 
             price_cents = calculate_price_for_height(
@@ -604,15 +605,21 @@ def create_checkout():
                 base_price_cents=base_price,
                 base_height_mm=base_height,
             )
+
+            # Apply regional multiplier
+            price_cents = int(price_cents * region.price_multiplier)
+            # Round to nearest dollar
+            price_cents = round(price_cents / 100) * 100
+
             logger.info(f"[Checkout] Custom size: {custom_height_mm}mm, Region: {region.key}, Country: {shipping_country}, Price: ${price_cents/100}")
 
             # Store custom height in size field for order
             size = f"custom_{int(custom_height_mm)}mm"
         else:
-            # Use standard regional pricing
+            # Use standard regional pricing (default to plastic_white material)
             from regional_pricing import calculate_price as calc_regional_price
-            regional_price = calc_regional_price(size, shipping_country)
-            price_cents = regional_price.price_cents
+            regional_price = calc_regional_price("plastic_white", size, shipping_country)
+            price_cents = regional_price.regional_price_cents
             logger.info(f"[Checkout] Region: {regional_price.region_key}, Country: {shipping_country}, Size: {size}, Price: ${price_cents/100}")
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
