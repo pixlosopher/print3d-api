@@ -514,12 +514,18 @@ def get_job(job_id: str):
     if not job_service:
         return jsonify({"error": "Job service not available"}), 503
 
-    job = job_service.get_job_status(job_id)
+    try:
+        job = job_service.get_job_status(job_id)
 
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
 
-    return jsonify(job)
+        return jsonify(job)
+    except Exception as e:
+        print(f"[get_job] Error getting job {job_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/jobs")
