@@ -44,8 +44,18 @@ from pricing import calculate_price, get_price_matrix, validate_order_config
 # Create Flask app
 app = Flask(__name__)
 
-# Enable CORS for frontend
-CORS(app, origins=["http://localhost:3000", "https://*.vercel.app", "*"])
+# Enable CORS for frontend (specific origins only - no wildcards for security)
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://casaorbe.ai",
+    "https://www.casaorbe.ai",
+    "https://create.casaorbe.ai",
+]
+# Add any Vercel preview URLs from environment
+if os.getenv("ALLOWED_ORIGINS"):
+    ALLOWED_ORIGINS.extend(os.getenv("ALLOWED_ORIGINS").split(","))
+
+CORS(app, origins=ALLOWED_ORIGINS)
 
 # Services
 config = get_config()
@@ -656,18 +666,20 @@ def stripe_webhook():
     payload = request.data
     signature = request.headers.get("Stripe-Signature")
 
-    # For local testing without webhook secret, skip verification
-    if not config.stripe_webhook_secret:
-        import json
-        try:
-            event = json.loads(payload)
-        except:
-            return jsonify({"error": "Invalid JSON"}), 400
-    else:
-        try:
-            event = payment_service.verify_stripe_webhook(payload, signature)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 400
+    # SECURITY: Always require webhook secret - no bypass allowed
+    if not config.active_stripe_webhook_secret:
+        print("[Webhook] ERROR: STRIPE_WEBHOOK_SECRET not configured")
+        return jsonify({"error": "Webhook not configured"}), 500
+
+    if not signature:
+        print("[Webhook] ERROR: Missing Stripe-Signature header")
+        return jsonify({"error": "Missing signature"}), 400
+
+    try:
+        event = payment_service.verify_stripe_webhook(payload, signature)
+    except Exception as e:
+        print(f"[Webhook] Signature verification failed: {e}")
+        return jsonify({"error": "Invalid signature"}), 400
 
     if event["type"] == "checkout.session.completed":
         payment_result = payment_service.handle_payment_success(event)
@@ -784,9 +796,7 @@ def paypal_webhook():
 @app.route("/api/admin/process-order/<order_id>", methods=["POST"])
 def admin_process_order(order_id: str):
     """Manually process an order (mark as paid and send to Shapeways)."""
-    # Simple auth check - require admin_key in header
-    admin_key = request.headers.get("X-Admin-Key")
-    if admin_key != "print3d-admin-2024":
+    if not verify_admin(request):
         return jsonify({"error": "Unauthorized"}), 401
 
     # Get order
@@ -871,8 +881,7 @@ def admin_process_order(order_id: str):
 @app.route("/api/admin/regenerate-3d/<order_id>", methods=["POST"])
 def admin_regenerate_3d(order_id: str):
     """Regenerate 3D model for an order and submit to Shapeways."""
-    admin_key = request.headers.get("X-Admin-Key")
-    if admin_key != "print3d-admin-2024":
+    if not verify_admin(request):
         return jsonify({"error": "Unauthorized"}), 401
 
     order = order_service.get_order(order_id)
@@ -965,7 +974,10 @@ def admin_regenerate_3d(order_id: str):
 
 # ============ Admin Dashboard (Semi-Manual Workflow) ============
 
-ADMIN_KEY = "print3d-admin-2024"
+# Admin key from environment variable (REQUIRED for security)
+ADMIN_KEY = os.getenv("ADMIN_KEY")
+if not ADMIN_KEY:
+    print("[WARNING] ADMIN_KEY not set - admin endpoints will be disabled")
 
 
 def verify_admin(request):
@@ -974,6 +986,8 @@ def verify_admin(request):
     Checks both header (X-Admin-Key) and query parameter (key) for flexibility.
     Query parameter is useful for file downloads where headers can't be set.
     """
+    if not ADMIN_KEY:
+        return False  # Disabled if not configured
     admin_key = request.headers.get("X-Admin-Key") or request.args.get("key")
     return admin_key == ADMIN_KEY
 
@@ -1490,14 +1504,31 @@ def serve_admin_dashboard():
 
 @app.route("/output/<path:filename>")
 def serve_output(filename: str):
-    """Serve generated files."""
-    output_dir = Path(config.output_dir).resolve()
-    return send_from_directory(output_dir, filename)
+    """Serve generated files.
+
+    Security: Files are served only if:
+    1. Admin with valid key, OR
+    2. Request has valid job_id that owns the file
+    """
+    # Admin access always allowed
+    if verify_admin(request):
+        output_dir = Path(config.output_dir).resolve()
+        return send_from_directory(output_dir, filename)
+
+    # For non-admin, verify job ownership via job_id parameter
+    job_id = request.args.get("job_id")
+    if job_id and filename.startswith(job_id):
+        output_dir = Path(config.output_dir).resolve()
+        return send_from_directory(output_dir, filename)
+
+    return jsonify({"error": "Unauthorized - provide job_id or admin key"}), 401
 
 
 @app.route("/agent_output/<path:filename>")
 def serve_agent_output(filename: str):
-    """Serve agent output files."""
+    """Serve agent output files (admin only)."""
+    if not verify_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
     output_dir = Path("./agent_output").resolve()
     return send_from_directory(output_dir, filename)
 
