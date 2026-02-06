@@ -86,16 +86,22 @@ class JobModel(Base):
     @property
     def mesh_urls(self) -> dict:
         """Parse mesh_urls_json to dict."""
-        if self.mesh_urls_json:
-            import json
-            try:
-                return json.loads(self.mesh_urls_json)
-            except json.JSONDecodeError:
-                return {}
+        try:
+            if hasattr(self, 'mesh_urls_json') and self.mesh_urls_json:
+                import json
+                try:
+                    return json.loads(self.mesh_urls_json)
+                except json.JSONDecodeError:
+                    return {}
+        except Exception:
+            # Column might not exist yet (pre-migration)
+            pass
         return {}
 
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
+        # Safely access attributes that might not exist in older DB schemas
+        concept_only = getattr(self, 'concept_only', False) or False
         return {
             "id": self.id,
             "description": self.description,
@@ -112,7 +118,7 @@ class JobModel(Base):
             "progress": self.progress,
             "error_message": self.error_message,
             "agent_name": self.agent_name,
-            "concept_only": self.concept_only,
+            "concept_only": concept_only,
         }
 
 
@@ -213,6 +219,24 @@ def _run_migrations():
     from sqlalchemy import text, inspect
 
     inspector = inspect(engine)
+
+    # Check if 'jobs' table exists and migrate
+    if 'jobs' in inspector.get_table_names():
+        columns = [col['name'] for col in inspector.get_columns('jobs')]
+
+        # Add 'mesh_urls_json' column if it doesn't exist
+        if 'mesh_urls_json' not in columns:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE jobs ADD COLUMN mesh_urls_json TEXT"))
+                conn.commit()
+                print("[DB] Migration: Added 'mesh_urls_json' column to jobs table")
+
+        # Add 'concept_only' column if it doesn't exist
+        if 'concept_only' not in columns:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE jobs ADD COLUMN concept_only BOOLEAN DEFAULT 0"))
+                conn.commit()
+                print("[DB] Migration: Added 'concept_only' column to jobs table")
 
     # Check if 'orders' table exists
     if 'orders' in inspector.get_table_names():
