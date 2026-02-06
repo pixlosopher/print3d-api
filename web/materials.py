@@ -86,8 +86,9 @@ METAL_FINISHES = [
 
 
 # Available materials
-# Note: shapeways_material_id values need to be fetched from Shapeways API
-# These are placeholders - run fetch_shapeways_materials() to get real IDs
+# Prices updated 2026-02 - Premium pricing strategy
+# Anchor: Mini $39.90, Medium $79.90, Large $149.90 (plastic_white)
+# Base prices are for MINI size (50mm) - use regional_pricing.py for full matrix
 MATERIALS: Dict[str, Material] = {
     "plastic_white": Material(
         key="plastic_white",
@@ -95,10 +96,10 @@ MATERIALS: Dict[str, Material] = {
         name_es="Plástico Blanco",
         description="Affordable, matte finish. Great for prototypes.",
         description_es="Económico, acabado mate. Ideal para prototipos.",
-        base_price_cents=2900,  # $29
+        base_price_cents=3990,  # $39.90 LATAM base for mini
         price_multiplier=1.0,
-        shapeways_material_id=None,  # Versatile Plastic - White
-        colors=[],  # No color choice
+        shapeways_material_id=None,
+        colors=[],
         supports_full_color=False,
         min_detail_mm=0.8,
         finish="Matte",
@@ -109,9 +110,9 @@ MATERIALS: Dict[str, Material] = {
         name_es="Plástico Color",
         description="Durable nylon in your favorite color.",
         description_es="Nylon duradero en tu color favorito.",
-        base_price_cents=3900,  # $39
-        price_multiplier=1.2,
-        shapeways_material_id=None,  # Versatile Plastic - Colored
+        base_price_cents=4990,  # $49.90 LATAM base for mini
+        price_multiplier=1.25,
+        shapeways_material_id=None,
         colors=PLASTIC_COLORS,
         supports_full_color=False,
         min_detail_mm=0.8,
@@ -123,9 +124,9 @@ MATERIALS: Dict[str, Material] = {
         name_es="Resina Premium",
         description="High detail, smooth surface. Museum quality.",
         description_es="Alto detalle, superficie lisa. Calidad museo.",
-        base_price_cents=5900,  # $59
-        price_multiplier=1.5,
-        shapeways_material_id=None,  # High Definition Resin
+        base_price_cents=6990,  # $69.90 LATAM base for mini
+        price_multiplier=1.75,
+        shapeways_material_id=None,
         colors=RESIN_COLORS,
         supports_full_color=False,
         min_detail_mm=0.3,
@@ -137,23 +138,23 @@ MATERIALS: Dict[str, Material] = {
         name_es="Full Color",
         description="Prints the exact colors from your design. Vibrant and unique.",
         description_es="Imprime los colores exactos de tu diseño. Vibrante y único.",
-        base_price_cents=7900,  # $79
-        price_multiplier=2.0,
-        shapeways_material_id=None,  # Full Color Nylon 12
-        colors=[],  # Colors come from texture
+        base_price_cents=8990,  # $89.90 LATAM base for mini
+        price_multiplier=2.25,
+        shapeways_material_id=None,
+        colors=[],
         supports_full_color=True,
         min_detail_mm=0.5,
         finish="Matte with color",
     ),
-    "metal_steel": Material(
-        key="metal_steel",
+    "metal": Material(
+        key="metal",
         name="Stainless Steel",
         name_es="Acero Inoxidable",
         description="Real metal. Heavy, durable, impressive.",
         description_es="Metal real. Pesado, duradero, impresionante.",
-        base_price_cents=14900,  # $149
-        price_multiplier=3.0,
-        shapeways_material_id=None,  # Stainless Steel
+        base_price_cents=14990,  # $149.90 LATAM base for mini
+        price_multiplier=3.75,
+        shapeways_material_id=None,
         colors=METAL_FINISHES,
         supports_full_color=False,
         min_detail_mm=1.0,

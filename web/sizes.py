@@ -35,6 +35,7 @@ class Size:
 
 
 # Available sizes
+# Updated 2026-02 - aligned with regional_pricing.py
 SIZES: Dict[str, Size] = {
     "mini": Size(
         key="mini",
@@ -42,44 +43,44 @@ SIZES: Dict[str, Size] = {
         name_es="Mini",
         height_mm=50,
         description="Keychain, desk toy",
-        description_es="Llavero, escritorio",
+        description_es="Llavero, juguete de escritorio",
         price_multiplier=1.0,
     ),
     "small": Size(
         key="small",
         name="Small",
         name_es="Pequeño",
-        height_mm=80,
-        description="Desk figure",
-        description_es="Figura de escritorio",
-        price_multiplier=1.3,
+        height_mm=75,
+        description="Desk figure, collectible",
+        description_es="Figura de escritorio, coleccionable",
+        price_multiplier=1.5,
     ),
     "medium": Size(
         key="medium",
         name="Medium",
         name_es="Mediano",
-        height_mm=120,
-        description="Collectible",
-        description_es="Coleccionable",
-        price_multiplier=1.8,
+        height_mm=100,
+        description="Display piece, gift",
+        description_es="Pieza de exhibición, regalo",
+        price_multiplier=2.4,
     ),
     "large": Size(
         key="large",
         name="Large",
         name_es="Grande",
-        height_mm=180,
-        description="Display piece, gift",
-        description_es="Display, regalo",
-        price_multiplier=2.5,
+        height_mm=150,
+        description="Statement piece, premium gift",
+        description_es="Pieza destacada, regalo premium",
+        price_multiplier=3.6,
     ),
     "xl": Size(
         key="xl",
         name="XL",
-        name_es="XL",
-        height_mm=250,
-        description="Exhibition piece",
-        description_es="Pieza de exhibición",
-        price_multiplier=3.5,
+        name_es="Extra Grande",
+        height_mm=200,
+        description="Exhibition piece, centerpiece",
+        description_es="Pieza de exhibición, centro de mesa",
+        price_multiplier=5.2,
     ),
 }
 
