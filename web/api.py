@@ -1412,12 +1412,16 @@ def admin_delete_order(order_id: str):
 @app.route("/api/order/<order_id>")
 def get_order(order_id: str):
     """Get order details."""
-    order = order_service.get_order(order_id)
+    try:
+        order = order_service.get_order(order_id)
 
-    if not order:
-        return jsonify({"error": "Order not found"}), 404
+        if not order:
+            return jsonify({"error": "Order not found"}), 404
 
-    return jsonify(order.to_dict())
+        return jsonify(order.to_dict())
+    except Exception as e:
+        logger.error(f"Error getting order {order_id}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/order/<order_id>/test-mark-paid", methods=["POST"])
