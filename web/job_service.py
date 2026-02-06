@@ -202,18 +202,23 @@ class RealJobService:
                 new_mesh_path = self.output_dir / mesh_filename
                 mesh_result.local_path.rename(new_mesh_path)
 
-            # Update database with mesh path
+            # Update database with mesh path and all format URLs
+            import json
             mesh_url = mesh_result.glb_url or mesh_result.obj_url
+            mesh_urls_json = json.dumps(mesh_result.model_urls) if mesh_result.model_urls else None
+
             with get_db_session() as db:
                 update_job(
                     db, job_id,
                     mesh_path=f"/output/{mesh_filename}",
                     mesh_url=mesh_url,
+                    mesh_urls_json=mesh_urls_json,  # Save all format URLs
                     progress=100,
                     status=JobStatusEnum.COMPLETED.value
                 )
 
             print(f"[{job_id}] Mesh generated: /output/{mesh_filename}")
+            print(f"[{job_id}] Available formats: {list(mesh_result.model_urls.keys())}")
             return True
 
         except Exception as e:
@@ -331,18 +336,23 @@ class RealJobService:
                 new_mesh_path = self.output_dir / mesh_filename
                 mesh_result.local_path.rename(new_mesh_path)
 
-            # Update database with mesh path
+            # Update database with mesh path and all format URLs
+            import json
             mesh_url = mesh_result.glb_url or mesh_result.obj_url
+            mesh_urls_json = json.dumps(mesh_result.model_urls) if mesh_result.model_urls else None
+
             with get_db_session() as db:
                 update_job(
                     db, job_id,
                     mesh_path=f"/output/{mesh_filename}",
                     mesh_url=mesh_url,
+                    mesh_urls_json=mesh_urls_json,  # Save all format URLs
                     progress=100,
                     status=JobStatusEnum.COMPLETED.value
                 )
 
             print(f"[{job_id}] Completed! Mesh: /output/{mesh_filename}")
+            print(f"[{job_id}] Available formats: {list(mesh_result.model_urls.keys())}")
             return True
 
         except Exception as e:

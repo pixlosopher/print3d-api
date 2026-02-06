@@ -68,7 +68,10 @@ class JobModel(Base):
     image_path = Column(String(255), nullable=True)
     image_url = Column(String(500), nullable=True)
     mesh_path = Column(String(255), nullable=True)
-    mesh_url = Column(String(500), nullable=True)
+    mesh_url = Column(String(500), nullable=True)  # GLB URL for preview
+
+    # All mesh format URLs from Meshy (JSON: {glb, stl, obj, fbx})
+    mesh_urls_json = Column(Text, nullable=True)
 
     # Progress and errors
     progress = Column(Integer, default=0)
@@ -79,6 +82,17 @@ class JobModel(Base):
 
     # New: concept-only flag for cost-efficient flow
     concept_only = Column(Boolean, default=False)
+
+    @property
+    def mesh_urls(self) -> dict:
+        """Parse mesh_urls_json to dict."""
+        if self.mesh_urls_json:
+            import json
+            try:
+                return json.loads(self.mesh_urls_json)
+            except json.JSONDecodeError:
+                return {}
+        return {}
 
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
@@ -94,6 +108,7 @@ class JobModel(Base):
             "image_url": self.image_url,
             "mesh_path": self.mesh_path,
             "mesh_url": self.mesh_url,
+            "mesh_urls": self.mesh_urls,  # All formats: {glb, stl, obj, fbx}
             "progress": self.progress,
             "error_message": self.error_message,
             "agent_name": self.agent_name,
