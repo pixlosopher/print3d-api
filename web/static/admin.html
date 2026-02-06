@@ -799,7 +799,8 @@
                     </td>
                     <td>
                         <button class="action-btn" onclick="viewOrder('${order.id}')">👁️</button>
-                        ${order.job?.mesh_path ? `<button class="action-btn primary" onclick="downloadMesh('${order.id}')">⬇️</button>` : ''}
+                        ${order.job?.mesh_path || order.job?.mesh_urls?.glb ? `<button class="action-btn" onclick="downloadMesh('${order.id}', 'glb')" title="GLB Preview">🎨</button>` : ''}
+                        ${order.job?.mesh_urls?.stl ? `<button class="action-btn primary" onclick="downloadMesh('${order.id}', 'stl')" title="STL Producción">📐</button>` : ''}
                         ${order.archived
                             ? `<button class="action-btn warning" onclick="unarchiveOrder('${order.id}')" title="Restaurar">↩️</button>`
                             : `<button class="action-btn" onclick="archiveOrder('${order.id}')" title="Archivar">📁</button>`
@@ -863,6 +864,31 @@
                     </div>
 
                     ${job.image_url ? `<img src="${job.image_url}" class="concept-preview" alt="Concept">` : ''}
+
+                    ${(job.mesh_path || job.mesh_urls) ? `
+                    <div style="background: #1a2e1a; border: 1px solid #10b981; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                        <h4 style="color: #10b981; margin-bottom: 12px;">🖨️ Archivos para Producción</h4>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            ${(job.mesh_path || job.mesh_urls?.glb) ? `
+                            <button class="action-btn" onclick="downloadMesh('${orderId}', 'glb')" style="padding: 10px 16px;">
+                                🎨 GLB (Preview)
+                            </button>` : ''}
+                            ${job.mesh_urls?.stl ? `
+                            <button class="action-btn primary" onclick="downloadMesh('${orderId}', 'stl')" style="padding: 10px 16px;">
+                                📐 STL (Producción)
+                            </button>` : ''}
+                            ${job.mesh_urls?.obj ? `
+                            <button class="action-btn" onclick="downloadMesh('${orderId}', 'obj')" style="padding: 10px 16px;">
+                                📦 OBJ
+                            </button>` : ''}
+                            ${job.mesh_urls?.fbx ? `
+                            <button class="action-btn" onclick="downloadMesh('${orderId}', 'fbx')" style="padding: 10px 16px;">
+                                🎬 FBX
+                            </button>` : ''}
+                        </div>
+                        ${!job.mesh_urls?.stl ? '<p style="color: #f59e0b; font-size: 12px; margin-top: 8px;">⚠️ STL no disponible - usa GLB o regenera el modelo</p>' : ''}
+                    </div>
+                    ` : ''}
 
                     <div class="shipping-info">
                         <h4>📦 Dirección de Envío</h4>
@@ -935,10 +961,11 @@
             document.getElementById('orderModal').classList.remove('active');
         }
 
-        // Download mesh file
-        function downloadMesh(orderId) {
+        // Download mesh file in specific format
+        function downloadMesh(orderId, format = 'glb') {
             // Pass admin key as query parameter for file downloads
-            window.open(`${API_BASE}/api/admin/download/${orderId}/mesh?key=${ADMIN_KEY}`, '_blank');
+            // format: 'glb' for preview, 'stl' for production
+            window.open(`${API_BASE}/api/admin/download/${orderId}/${format}?key=${ADMIN_KEY}`, '_blank');
         }
 
         // Save external order info

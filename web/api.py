@@ -29,7 +29,7 @@ web_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, web_dir)
 
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, redirect
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime
@@ -1160,7 +1160,7 @@ def admin_get_order(order_id: str):
 @require_admin
 def admin_download_mesh(order_id: str):
     """
-    Download mesh file (.glb) for an order.
+    Download mesh file (.glb) for an order - default format.
 
     Used by admin to manually upload to Craftcloud/TRIDEO.
     """
@@ -1185,6 +1185,52 @@ def admin_download_mesh(order_id: str):
         download_name=download_name,
         mimetype="model/gltf-binary",
     )
+
+
+@app.route("/api/admin/download/<order_id>/<format>")
+@require_admin
+def admin_download_mesh_format(order_id: str, format: str):
+    """
+    Download mesh file in specific format (glb, stl, obj, fbx) for an order.
+
+    For production, STL is preferred.
+    For preview, GLB is preferred.
+
+    Uses Meshy URLs if available, falls back to local file for GLB.
+    """
+    if format not in ("glb", "stl", "obj", "fbx"):
+        return jsonify({"error": f"Invalid format: {format}. Use glb, stl, obj, or fbx"}), 400
+
+    order = order_service.get_order(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    job = job_service.get_job_status(order.job_id)
+    if not job:
+        return jsonify({"error": "Job not found for this order"}), 404
+
+    # Check for mesh_urls from Meshy API
+    mesh_urls = job.get("mesh_urls", {})
+    if mesh_urls and format in mesh_urls:
+        # Redirect to Meshy URL for direct download
+        return redirect(mesh_urls[format])
+
+    # Fallback for GLB: use local file
+    if format == "glb" and job.get("mesh_path"):
+        mesh_path = resolve_mesh_path(job["mesh_path"])
+        if mesh_path.exists():
+            download_name = f"order_{order_id}.glb"
+            return send_file(
+                mesh_path,
+                as_attachment=True,
+                download_name=download_name,
+                mimetype="model/gltf-binary",
+            )
+
+    return jsonify({
+        "error": f"Format '{format}' not available for this order",
+        "available_formats": list(mesh_urls.keys()) if mesh_urls else ["glb (local)"]
+    }), 404
 
 
 @app.route("/api/admin/orders/<order_id>/external", methods=["PATCH"])
