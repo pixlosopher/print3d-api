@@ -13,6 +13,15 @@ from __future__ import annotations
 
 import os
 import sys
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Add directories to path for imports
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,6 +33,10 @@ from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from pathlib import Path
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+
+# Thread pool for background tasks (limited to prevent memory exhaustion)
+executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="mesh_gen_")
 
 # Import config
 from config import get_config
@@ -516,7 +529,7 @@ def create_checkout():
                 base_price_cents=base_price,
                 base_height_mm=base_height,
             )
-            print(f"[Checkout] Custom size: {custom_height_mm}mm, Region: {region.key}, Country: {shipping_country}, Price: ${price_cents/100}")
+            logger.info(f"[Checkout] Custom size: {custom_height_mm}mm, Region: {region.key}, Country: {shipping_country}, Price: ${price_cents/100}")
 
             # Store custom height in size field for order
             size = f"custom_{int(custom_height_mm)}mm"
@@ -525,7 +538,7 @@ def create_checkout():
             from regional_pricing import calculate_price as calc_regional_price
             regional_price = calc_regional_price(size, shipping_country)
             price_cents = regional_price.price_cents
-            print(f"[Checkout] Region: {regional_price.region_key}, Country: {shipping_country}, Size: {size}, Price: ${price_cents/100}")
+            logger.info(f"[Checkout] Region: {regional_price.region_key}, Country: {shipping_country}, Size: {size}, Price: ${price_cents/100}")
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
@@ -645,19 +658,18 @@ def submit_to_shapeways(order):
                             order_id=order.id,
                             shapeways_order_id=shapeways_result.shapeways_order_id,
                         )
-                        print(f"[Shapeways] Order created: {shapeways_result.shapeways_order_id}")
+                        logger.info(f"[Shapeways] Order created: {shapeways_result.shapeways_order_id}")
                     else:
-                        print(f"[Shapeways] Failed: {shapeways_result.error_message}")
+                        logger.info(f"[Shapeways] Failed: {shapeways_result.error_message}")
                 else:
-                    print(f"[Shapeways] Mesh not found: {mesh_path}")
+                    logger.info(f"[Shapeways] Mesh not found: {mesh_path}")
             else:
-                print(f"[Shapeways] No mesh_path in job {order.job_id}")
+                logger.info(f"[Shapeways] No mesh_path in job {order.job_id}")
         else:
-            print("[Shapeways] Service not available")
+            logger.info("[Shapeways] Service not available")
     except Exception as e:
-        import traceback
-        print(f"[Shapeways] Error: {e}")
-        traceback.print_exc()
+        logger.info(f"[Shapeways] Error: {e}")
+        logger.exception("Exception occurred")
 
 
 @app.route("/api/webhook/stripe", methods=["POST"])
@@ -668,17 +680,17 @@ def stripe_webhook():
 
     # SECURITY: Always require webhook secret - no bypass allowed
     if not config.active_stripe_webhook_secret:
-        print("[Webhook] ERROR: STRIPE_WEBHOOK_SECRET not configured")
+        logger.error("[Webhook] STRIPE_WEBHOOK_SECRET not configured")
         return jsonify({"error": "Webhook not configured"}), 500
 
     if not signature:
-        print("[Webhook] ERROR: Missing Stripe-Signature header")
+        logger.error("[Webhook] Missing Stripe-Signature header")
         return jsonify({"error": "Missing signature"}), 400
 
     try:
         event = payment_service.verify_stripe_webhook(payload, signature)
     except Exception as e:
-        print(f"[Webhook] Signature verification failed: {e}")
+        logger.info(f"[Webhook] Signature verification failed: {e}")
         return jsonify({"error": "Invalid signature"}), 400
 
     if event["type"] == "checkout.session.completed":
@@ -709,11 +721,11 @@ def stripe_webhook():
                         }
                     )
                     if email_result.success:
-                        print(f"[Webhook] Confirmation email sent to {order.customer_email}")
+                        logger.info(f"[Webhook] Confirmation email sent to {order.customer_email}")
                     else:
-                        print(f"[Webhook] Email failed: {email_result.error}")
+                        logger.info(f"[Webhook] Email failed: {email_result.error}")
             except Exception as e:
-                print(f"[Webhook] Failed to send email: {e}")
+                logger.info(f"[Webhook] Failed to send email: {e}")
 
             # Check if job is concept_only (needs 3D generation)
             job = job_service.get_job_status(order.job_id)
@@ -722,7 +734,7 @@ def stripe_webhook():
 
                 if is_concept_only:
                     # NEW FLOW: Generate 3D now that payment is confirmed
-                    print(f"[Webhook] Generating 3D for concept job {order.job_id}...")
+                    logger.info(f"[Webhook] Generating 3D for concept job {order.job_id}...")
                     mesh_style = getattr(order, 'mesh_style', 'detailed')
                     material_key = order.material
 
@@ -732,17 +744,16 @@ def stripe_webhook():
                     job_id_for_thread = order.job_id
                     customer_email_for_thread = order.customer_email
 
-                    import threading
                     def generate_and_submit():
                         try:
-                            print(f"[Webhook Thread] Starting 3D generation for {job_id_for_thread}...")
+                            logger.info(f"[MeshGen] Starting 3D generation for job {job_id_for_thread}")
                             success = job_service.generate_mesh_for_job(
                                 job_id=job_id_for_thread,
                                 mesh_style=mesh_style,
                                 material_key=material_key,
                             )
                             if success:
-                                print(f"[Webhook Thread] 3D generated for {job_id_for_thread}")
+                                logger.info(f"[MeshGen] Completed for job {job_id_for_thread}")
 
                                 # Send "Model Ready" email notification
                                 try:
@@ -752,28 +763,26 @@ def stripe_webhook():
                                             order_id=order_id_for_thread,
                                         )
                                         if email_result.success:
-                                            print(f"[Webhook Thread] Model ready email sent to {customer_email_for_thread}")
+                                            logger.info(f"[MeshGen] Model ready email sent to {customer_email_for_thread}")
                                         else:
-                                            print(f"[Webhook Thread] Model ready email failed: {email_result.error}")
+                                            logger.error(f"[MeshGen] Model ready email failed: {email_result.error}")
                                 except Exception as email_error:
-                                    print(f"[Webhook Thread] Failed to send model ready email: {email_error}")
+                                    logger.exception(f"[MeshGen] Failed to send model ready email")
 
                                 # Reload order from DB to get fresh session
                                 fresh_order = order_service.get_order(order_id_for_thread)
                                 if fresh_order:
-                                    print(f"[Webhook Thread] Submitting to Shapeways...")
+                                    logger.info(f"[MeshGen] Submitting to Shapeways...")
                                     submit_to_shapeways(fresh_order)
                                 else:
-                                    print(f"[Webhook Thread] ERROR: Could not reload order {order_id_for_thread}")
+                                    logger.error(f"[MeshGen] Could not reload order {order_id_for_thread}")
                             else:
-                                print(f"[Webhook Thread] 3D generation failed for {job_id_for_thread}")
+                                logger.error(f"[MeshGen] 3D generation failed for job {job_id_for_thread}")
                         except Exception as e:
-                            import traceback
-                            print(f"[Webhook Thread] Error: {e}")
-                            traceback.print_exc()
+                            logger.exception(f"[MeshGen] Error processing job {job_id_for_thread}")
 
-                    thread = threading.Thread(target=generate_and_submit, daemon=True)
-                    thread.start()
+                    # Submit to thread pool (limited workers prevent memory exhaustion)
+                    executor.submit(generate_and_submit)
                 else:
                     # OLD FLOW: Mesh already exists, submit to Shapeways
                     submit_to_shapeways(order)
@@ -785,10 +794,16 @@ def stripe_webhook():
 
 @app.route("/api/webhook/paypal", methods=["POST"])
 def paypal_webhook():
-    """Handle PayPal webhook events."""
-    data = request.get_json()
-    # TODO: Implement PayPal webhook handling
-    return jsonify({"status": "received"})
+    """Handle PayPal webhook events.
+
+    NOTE: PayPal integration not implemented yet.
+    Returns 501 to indicate the endpoint exists but is not functional.
+    """
+    logger.warning("[PayPal] Webhook received but PayPal not implemented")
+    return jsonify({
+        "error": "PayPal integration not implemented",
+        "message": "Please use Stripe for payments"
+    }), 501
 
 
 # ============ Admin ============
@@ -895,7 +910,7 @@ def admin_regenerate_3d(order_id: str):
         mesh_style = getattr(order, 'mesh_style', 'detailed')
         material_key = order.material
 
-        print(f"[Admin] Regenerating 3D for job {order.job_id}...")
+        logger.info(f"[Admin] Regenerating 3D for job {order.job_id}...")
         success = job_service.generate_mesh_for_job(
             job_id=order.job_id,
             mesh_style=mesh_style,
@@ -965,8 +980,7 @@ def admin_regenerate_3d(order_id: str):
             })
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("Exception occurred")
         results["steps"].append({"step": "shapeways", "status": "error", "error": str(e)})
 
     return jsonify(results)
@@ -977,7 +991,7 @@ def admin_regenerate_3d(order_id: str):
 # Admin key from environment variable (REQUIRED for security)
 ADMIN_KEY = os.getenv("ADMIN_KEY")
 if not ADMIN_KEY:
-    print("[WARNING] ADMIN_KEY not set - admin endpoints will be disabled")
+    logger.warning("[ ADMIN_KEY not set - admin endpoints will be disabled")
 
 
 def verify_admin(request):
@@ -1404,9 +1418,8 @@ def test_mark_paid(order_id: str):
         # Mark as paid using existing method
         order_service.mark_paid(order_id, payment_id="test_payment", payment_provider="stripe_test")
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+        logger.exception("Exception in test-mark-paid")
+        return jsonify({"error": str(e)}), 500
 
     # Trigger 3D generation
     job = job_service.get_job(order.job_id)
@@ -1414,21 +1427,18 @@ def test_mark_paid(order_id: str):
         # Get mesh style and material from order
         mesh_style = order.mesh_style or "detailed"
         material = order.material or "plastic_white"
+        job_id = order.job_id
 
-        # Start mesh generation in background
-        import threading
+        # Start mesh generation in background using thread pool
         def generate_mesh_bg():
             try:
-                print(f"[TEST-PAID] Starting mesh generation for job {order.job_id}, style={mesh_style}, material={material}")
-                job_service.generate_mesh_for_job(order.job_id, mesh_style, material)
-                print(f"[TEST-PAID] Mesh generation completed for job {order.job_id}")
-            except Exception as e:
-                print(f"[TEST-PAID] Mesh generation error: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.info(f"[TEST-PAID] Starting mesh generation for job {job_id}")
+                job_service.generate_mesh_for_job(job_id, mesh_style, material)
+                logger.info(f"[TEST-PAID] Mesh generation completed for job {job_id}")
+            except Exception:
+                logger.exception(f"[TEST-PAID] Mesh generation error for job {job_id}")
 
-        thread = threading.Thread(target=generate_mesh_bg)
-        thread.start()
+        executor.submit(generate_mesh_bg)
 
         return jsonify({
             "success": True,
@@ -1546,9 +1556,9 @@ def main():
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
 
-    print("=" * 50)
+    logger.info("=" * 50)
     print("🚀 Starting Print3D API Server")
-    print("=" * 50)
+    logger.info("=" * 50)
     print(f"   Port: {port}")
     print(f"   Debug: {debug}")
     print(f"   Frontend URL: {config.frontend_url}")
@@ -1557,7 +1567,7 @@ def main():
     print(f"   Stripe: {'✅' if config.has_stripe else '❌'}")
     print(f"   PayPal: {'✅' if config.has_paypal else '❌'}")
     print(f"   Shapeways: {'✅' if config.has_shapeways else '❌'}")
-    print("=" * 50)
+    logger.info("=" * 50)
 
     # Start job worker if available
     if job_service:
