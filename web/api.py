@@ -42,7 +42,7 @@ executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="mesh_gen_")
 from config import get_config
 
 # Import local modules
-from orders import get_order_service, OrderStatus
+from orders import get_order_service
 from payments import get_payment_service, PRICING
 from job_service import get_job_service
 from shapeways_orders import get_shapeways_service
@@ -809,11 +809,9 @@ def paypal_webhook():
 # ============ Admin ============
 
 @app.route("/api/admin/process-order/<order_id>", methods=["POST"])
+@require_admin
 def admin_process_order(order_id: str):
     """Manually process an order (mark as paid and send to Shapeways)."""
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     # Get order
     order = order_service.get_order(order_id)
     if not order:
@@ -894,11 +892,9 @@ def admin_process_order(order_id: str):
 
 
 @app.route("/api/admin/regenerate-3d/<order_id>", methods=["POST"])
+@require_admin
 def admin_regenerate_3d(order_id: str):
     """Regenerate 3D model for an order and submit to Shapeways."""
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     order = order_service.get_order(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
@@ -991,10 +987,10 @@ def admin_regenerate_3d(order_id: str):
 # Admin key from environment variable (REQUIRED for security)
 ADMIN_KEY = os.getenv("ADMIN_KEY")
 if not ADMIN_KEY:
-    logger.warning("[ ADMIN_KEY not set - admin endpoints will be disabled")
+    logger.warning("[Admin] ADMIN_KEY not set - admin endpoints will be disabled")
 
 
-def verify_admin(request):
+def verify_admin(req):
     """Verify admin authentication.
 
     Checks both header (X-Admin-Key) and query parameter (key) for flexibility.
@@ -1002,19 +998,29 @@ def verify_admin(request):
     """
     if not ADMIN_KEY:
         return False  # Disabled if not configured
-    admin_key = request.headers.get("X-Admin-Key") or request.args.get("key")
+    admin_key = req.headers.get("X-Admin-Key") or req.args.get("key")
     return admin_key == ADMIN_KEY
 
 
+def require_admin(f):
+    """Decorator to require admin authentication for endpoints."""
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not verify_admin(request):
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.route("/api/admin/dashboard")
+@require_admin
 def admin_dashboard():
     """
     Get admin dashboard summary.
 
     Returns order counts by status and recent orders.
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
 
     from web.database import get_db_session, count_orders_by_status, list_orders_for_admin
 
@@ -1039,6 +1045,7 @@ def admin_dashboard():
 
 
 @app.route("/api/admin/orders")
+@require_admin
 def admin_list_orders():
     """
     List orders for admin dashboard.
@@ -1049,9 +1056,6 @@ def admin_list_orders():
         - offset: Pagination offset (default 0)
         - include_archived: Include archived orders (default false)
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     from web.database import get_db_session, list_orders_for_admin
 
     status = request.args.get("status")
@@ -1089,15 +1093,13 @@ def admin_list_orders():
 
 
 @app.route("/api/admin/orders/<order_id>")
+@require_admin
 def admin_get_order(order_id: str):
     """
     Get full order details for admin.
 
     Includes job info and file paths.
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     order = order_service.get_order(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
@@ -1124,15 +1126,13 @@ def admin_get_order(order_id: str):
 
 
 @app.route("/api/admin/download/<order_id>/mesh")
+@require_admin
 def admin_download_mesh(order_id: str):
     """
     Download mesh file (.glb) for an order.
 
     Used by admin to manually upload to Craftcloud/TRIDEO.
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     order = order_service.get_order(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
@@ -1157,6 +1157,7 @@ def admin_download_mesh(order_id: str):
 
 
 @app.route("/api/admin/orders/<order_id>/external", methods=["PATCH"])
+@require_admin
 def admin_update_external_order(order_id: str):
     """
     Update order with external provider info.
@@ -1168,9 +1169,6 @@ def admin_update_external_order(order_id: str):
         - shipping_cost_usd: Actual shipping cost
         - admin_notes: Internal notes
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     order = order_service.get_order(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
@@ -1211,6 +1209,7 @@ def admin_update_external_order(order_id: str):
 
 
 @app.route("/api/admin/orders/<order_id>/tracking", methods=["PATCH"])
+@require_admin
 def admin_update_tracking(order_id: str):
     """
     Update order with tracking info and notify customer.
@@ -1220,9 +1219,6 @@ def admin_update_tracking(order_id: str):
         - tracking_url: Optional tracking URL
         - notify_customer: Whether to send email notification (default: true)
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     order = order_service.get_order(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
@@ -1281,6 +1277,7 @@ def admin_update_tracking(order_id: str):
 
 
 @app.route("/api/admin/orders/<order_id>/status", methods=["PATCH"])
+@require_admin
 def admin_update_status(order_id: str):
     """
     Update order status.
@@ -1288,9 +1285,6 @@ def admin_update_status(order_id: str):
     Request body:
         - status: New status (paid, processing, shipped, delivered, cancelled)
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     order = order_service.get_order(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
@@ -1323,11 +1317,9 @@ def admin_update_status(order_id: str):
 
 
 @app.route("/api/admin/orders/<order_id>/archive", methods=["POST"])
+@require_admin
 def admin_archive_order(order_id: str):
     """Archive an order (soft delete - hides from list but keeps data)."""
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     from web.database import get_db_session, archive_order
 
     with get_db_session() as db:
@@ -1344,11 +1336,9 @@ def admin_archive_order(order_id: str):
 
 
 @app.route("/api/admin/orders/<order_id>/unarchive", methods=["POST"])
+@require_admin
 def admin_unarchive_order(order_id: str):
     """Unarchive an order (restore to list)."""
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     from web.database import get_db_session, unarchive_order
 
     with get_db_session() as db:
@@ -1365,15 +1355,13 @@ def admin_unarchive_order(order_id: str):
 
 
 @app.route("/api/admin/orders/<order_id>", methods=["DELETE"])
+@require_admin
 def admin_delete_order(order_id: str):
     """
     Permanently delete an order (cannot be undone).
 
     WARNING: This action is irreversible. Use archive instead for soft delete.
     """
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
     from web.database import get_db_session, delete_order_permanently
 
     with get_db_session() as db:
@@ -1535,10 +1523,9 @@ def serve_output(filename: str):
 
 
 @app.route("/agent_output/<path:filename>")
+@require_admin
 def serve_agent_output(filename: str):
     """Serve agent output files (admin only)."""
-    if not verify_admin(request):
-        return jsonify({"error": "Unauthorized"}), 401
     output_dir = Path("./agent_output").resolve()
     return send_from_directory(output_dir, filename)
 
