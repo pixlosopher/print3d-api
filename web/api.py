@@ -147,7 +147,10 @@ def get_public_config():
     return jsonify({
         "stripe_publishable_key": config.active_stripe_publishable_key if config.has_stripe else None,
         "stripe_mode": config.stripe_mode,  # "live" or "test"
+        "stripe_enabled": config.has_stripe,
         "paypal_client_id": config.paypal_client_id if config.has_paypal else None,
+        "paypal_mode": config.paypal_mode if config.has_paypal else None,  # "sandbox" or "live"
+        "paypal_enabled": config.has_paypal,
         "pricing": PRICING,
     })
 
@@ -606,11 +609,13 @@ def create_checkout():
                 size=size,
                 material=material,
                 customer_email=email,
+                price_cents=price_cents,
             )
             return jsonify({
                 "success": True,
                 "order_id": order.id,
                 "checkout_url": session.checkout_url,
+                "payment_id": session.session_id,  # PayPal payment ID for execute
                 "provider": "paypal",
             })
         else:
@@ -819,18 +824,128 @@ def stripe_webhook():
     return jsonify({"status": "ignored"})
 
 
+@app.route("/api/paypal/execute", methods=["POST"])
+def execute_paypal_payment():
+    """Execute PayPal payment after user approval.
+
+    Called by frontend after user returns from PayPal approval.
+    """
+    data = request.get_json()
+    payment_id = data.get("paymentId")
+    payer_id = data.get("payerId")
+
+    if not payment_id or not payer_id:
+        return jsonify({"error": "Missing paymentId or payerId"}), 400
+
+    try:
+        # Execute the payment
+        payment_result = payment_service.execute_paypal_payment(payment_id, payer_id)
+
+        # Update order status
+        order_service.mark_paid(
+            order_id=payment_result.order_id,
+            payment_id=payment_result.payment_id,
+            payment_provider="paypal",
+        )
+
+        # Get order for further processing
+        order = order_service.get_order(payment_result.order_id)
+        if order:
+            # Send confirmation email
+            try:
+                if email_service.is_available:
+                    email_result = email_service.send_order_confirmation(
+                        to_email=payment_result.customer_email,
+                        order_id=order.id,
+                        product_name=f"{order.size} / {order.material}",
+                        price_usd=order.price_usd,
+                    )
+                    if email_result.success:
+                        logger.info(f"[PayPal] Confirmation email sent to {payment_result.customer_email}")
+            except Exception as e:
+                logger.error(f"[PayPal] Failed to send email: {e}")
+
+            # Trigger 3D generation if concept_only
+            job = job_service.get_job_status(order.job_id)
+            if job:
+                is_concept_only = job.get("concept_only", False) or job.get("status") == "concept_ready"
+
+                if is_concept_only:
+                    logger.info(f"[PayPal] Generating 3D for concept job {order.job_id}...")
+                    mesh_style = getattr(order, 'mesh_style', 'detailed')
+                    material_key = order.material
+                    order_id_for_thread = order.id
+                    job_id_for_thread = order.job_id
+                    customer_email_for_thread = payment_result.customer_email
+
+                    def generate_and_submit():
+                        try:
+                            logger.info(f"[PayPal MeshGen] Starting 3D generation for job {job_id_for_thread}")
+                            success = job_service.generate_mesh_for_job(
+                                job_id=job_id_for_thread,
+                                mesh_style=mesh_style,
+                                material_key=material_key,
+                            )
+                            if success:
+                                logger.info(f"[PayPal MeshGen] Completed for job {job_id_for_thread}")
+                                # Send model ready email
+                                try:
+                                    if email_service.is_available:
+                                        email_service.send_model_ready_notification(
+                                            to_email=customer_email_for_thread,
+                                            order_id=order_id_for_thread,
+                                        )
+                                except Exception as email_error:
+                                    logger.exception("[PayPal MeshGen] Failed to send model ready email")
+                            else:
+                                logger.error(f"[PayPal MeshGen] 3D generation failed for job {job_id_for_thread}")
+                        except Exception as e:
+                            logger.exception(f"[PayPal MeshGen] Error processing job {job_id_for_thread}")
+
+                    executor.submit(generate_and_submit)
+
+        return jsonify({
+            "success": True,
+            "order_id": payment_result.order_id,
+            "payment_id": payment_result.payment_id,
+        })
+
+    except Exception as e:
+        logger.exception("[PayPal] Payment execution failed")
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/api/webhook/paypal", methods=["POST"])
 def paypal_webhook():
-    """Handle PayPal webhook events.
+    """Handle PayPal webhook events (IPN/Webhooks).
 
-    NOTE: PayPal integration not implemented yet.
-    Returns 501 to indicate the endpoint exists but is not functional.
+    Used for async notifications like refunds, disputes, etc.
+    Main payment flow uses /api/paypal/execute instead.
     """
-    logger.warning("[PayPal] Webhook received but PayPal not implemented")
-    return jsonify({
-        "error": "PayPal integration not implemented",
-        "message": "Please use Stripe for payments"
-    }), 501
+    try:
+        data = request.get_json()
+        logger.info(f"[PayPal Webhook] Received event: {data.get('event_type', 'unknown')}")
+
+        # Verify webhook
+        payload = payment_service.verify_paypal_webhook(data, dict(request.headers))
+
+        event_type = payload.get("event_type", "")
+
+        # Handle different event types
+        if event_type == "PAYMENT.SALE.COMPLETED":
+            # Payment completed - usually handled by /api/paypal/execute
+            logger.info("[PayPal Webhook] Payment completed notification received")
+
+        elif event_type == "PAYMENT.SALE.REFUNDED":
+            # Payment refunded
+            logger.info("[PayPal Webhook] Payment refunded")
+            # TODO: Update order status to refunded
+
+        return jsonify({"status": "received"})
+
+    except Exception as e:
+        logger.exception("[PayPal Webhook] Error processing webhook")
+        return jsonify({"error": str(e)}), 400
 
 
 # ============ Admin ============
