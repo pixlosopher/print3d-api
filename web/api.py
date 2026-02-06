@@ -79,6 +79,33 @@ shapeways_service = get_shapeways_service()
 email_service = get_email_service()
 
 
+# ============ Admin Authentication ============
+
+# Admin key from environment variable (REQUIRED for security)
+ADMIN_KEY = os.getenv("ADMIN_KEY")
+if not ADMIN_KEY:
+    logger.warning("[Admin] ADMIN_KEY not set - admin endpoints will be disabled")
+
+
+def verify_admin(req):
+    """Verify admin authentication."""
+    if not ADMIN_KEY:
+        return False
+    admin_key = req.headers.get("X-Admin-Key") or req.args.get("key")
+    return admin_key == ADMIN_KEY
+
+
+def require_admin(f):
+    """Decorator to require admin authentication for endpoints."""
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not verify_admin(request):
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ============ Health & Config ============
 
 @app.route("/")
@@ -983,35 +1010,6 @@ def admin_regenerate_3d(order_id: str):
 
 
 # ============ Admin Dashboard (Semi-Manual Workflow) ============
-
-# Admin key from environment variable (REQUIRED for security)
-ADMIN_KEY = os.getenv("ADMIN_KEY")
-if not ADMIN_KEY:
-    logger.warning("[Admin] ADMIN_KEY not set - admin endpoints will be disabled")
-
-
-def verify_admin(req):
-    """Verify admin authentication.
-
-    Checks both header (X-Admin-Key) and query parameter (key) for flexibility.
-    Query parameter is useful for file downloads where headers can't be set.
-    """
-    if not ADMIN_KEY:
-        return False  # Disabled if not configured
-    admin_key = req.headers.get("X-Admin-Key") or req.args.get("key")
-    return admin_key == ADMIN_KEY
-
-
-def require_admin(f):
-    """Decorator to require admin authentication for endpoints."""
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not verify_admin(request):
-            return jsonify({"error": "Unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated
-
 
 @app.route("/api/admin/dashboard")
 @require_admin
